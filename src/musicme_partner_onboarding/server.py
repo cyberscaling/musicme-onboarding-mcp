@@ -34,14 +34,35 @@ import os
 import re
 import sys
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 
 DEFAULT_ADMIN_URL = "https://admin-stream.musicme.cc"
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])?$")
-ORIGIN_RE = re.compile(r"^https://[a-z0-9.-]+(?::\d+)?(?:/.*)?$", re.IGNORECASE)
 DEFAULT_TIMEOUT_S = 30.0
+
+
+def _is_allowed_origin(value: object) -> bool:
+    """Mirror of admin-worker's `isAllowedOrigin`.
+
+    Accepts any `https://...` origin plus the loopback dev origins
+    `http://localhost`, `http://127.0.0.1`, `http://[::1]` (with optional
+    port + path). These are the only `http://` cases that are safe to
+    allow because they cannot be reached from the open internet.
+    """
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        u = urlparse(value)
+    except Exception:
+        return False
+    if u.scheme == "https" and u.hostname:
+        return True
+    if u.scheme == "http" and u.hostname in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    return False
 
 mcp = FastMCP(
     "musicme-partner-onboarding",
@@ -130,9 +151,11 @@ def register_partner(
     if not isinstance(name, str) or not name.strip():
         errors.append("name must be a non-empty string")
     if not isinstance(allowed_origins, list) or len(allowed_origins) == 0:
-        errors.append("allowed_origins must be a non-empty list of https:// URLs")
-    elif not all(isinstance(o, str) and ORIGIN_RE.match(o) for o in allowed_origins):
-        errors.append("every entry of allowed_origins must be an https:// URL")
+        errors.append("allowed_origins must be a non-empty list of origins")
+    elif not all(_is_allowed_origin(o) for o in allowed_origins):
+        errors.append(
+            "each origin must be https://... or http://localhost/127.0.0.1/[::1] (dev only)"
+        )
     if errors:
         return {"error": "invalid_body", "details": errors}
 
