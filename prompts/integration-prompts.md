@@ -15,9 +15,10 @@ peut pas conclure.
 > musicme).
 
 > **Référence technique** : le guide d'intégration complet est disponible à
-> [`system-design/09-partner-integration-guide.md`](https://github.com/Cyberscaling/secure-audio-stream/blob/main/system-design/09-partner-integration-guide.md)
-> dans le repo `secure-audio-stream`. Les prompts y renvoient quand un
-> détail mérite vérification humaine.
+> [`docs/integration-guide.md`](../docs/integration-guide.md) dans le présent
+> repository (URL publique :
+> https://github.com/cyberscaling/musicme-onboarding-mcp/blob/main/docs/integration-guide.md).
+> Les prompts y renvoient quand un détail mérite vérification humaine.
 
 ---
 

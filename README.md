@@ -108,7 +108,7 @@ To pin to a specific tagged release instead of always pulling `main`:
 ```json
 "args": [
   "--from",
-  "git+https://github.com/Cyberscaling/musicme-onboarding-mcp.git@v0.1.0",
+  "git+https://github.com/cyberscaling/musicme-onboarding-mcp.git@v0.2.0",
   "musicme-onboarding-mcp"
 ]
 ```
@@ -148,7 +148,8 @@ The response also gives you:
 | `stream_url` | use as `${stream_url}/init-stream` for player init |
 
 For the rest of the integration (backend mint endpoint, frontend SDK), see
-[`system-design/09-partner-integration-guide.md`](https://github.com/Cyberscaling/secure-audio-stream/blob/main/system-design/09-partner-integration-guide.md).
+the [partner integration guide](docs/integration-guide.md) shipped with this
+repository.
 
 ---
 

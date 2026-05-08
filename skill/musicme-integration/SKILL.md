@@ -17,6 +17,11 @@ la techno de streaming audio musicme dans un site existant. La techno
 fournit un lecteur sécurisé qui joue de la musique chiffrée
 end-to-end, avec auth JWT côté backend.
 
+> Référence canonique : le guide d'intégration complet vit dans le repo
+> public musicme-onboarding-mcp : <https://github.com/cyberscaling/musicme-onboarding-mcp/blob/main/docs/integration-guide.md>.
+> Y renvoyer l'utilisateur quand un détail mérite une lecture
+> approfondie (signature JWT, MSE/Blob, troubleshooting CORS, etc.).
+
 Cette skill s'active automatiquement quand l'utilisateur:
 - demande l'intégration musicme,
 - colle l'un des 6 prompts du jeu d'intégration (`prompts/integration-prompts.md`),

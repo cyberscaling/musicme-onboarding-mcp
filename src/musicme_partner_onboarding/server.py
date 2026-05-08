@@ -334,8 +334,8 @@ def integration_guide() -> dict[str, Any]:
     """
     return {
         "guide_url": (
-            "https://github.com/Cyberscaling/secure-audio-stream/blob/main/"
-            "system-design/09-partner-integration-guide.md"
+            "https://github.com/cyberscaling/musicme-onboarding-mcp/blob/main/"
+            "docs/integration-guide.md"
         ),
         "summary": (
             "1) Backend: store the mint_key in a secret manager. "

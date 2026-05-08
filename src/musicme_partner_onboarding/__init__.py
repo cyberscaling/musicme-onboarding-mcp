@@ -1,3 +1,3 @@
 """MCP server for self-service partner onboarding on the musicme audio streaming platform."""
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
