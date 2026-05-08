@@ -16,12 +16,23 @@ the agent inside your editor can call:
   partner, generates the cryptographic keys, and mints a `mint_key`.
   **The mint_key is shown once.** Store it in your backend secret manager
   before the agent moves on.
+- `update_allowed_origins(partner_id, allowed_origins)` — replace the list
+  of allowed CORS origins (add `http://localhost:5173` for dev, etc.).
 - `get_partner_status(partner_id)` — read-only health check.
 - `integration_guide()` — pointer to the full integration document.
 
 After registration, you no longer need this MCP server in day-to-day work —
 it's a one-shot installer. You can keep it installed for future
 re-registrations (new partners, environment splits, etc.).
+
+This repository also ships:
+
+- [`prompts/integration-prompts.md`](prompts/integration-prompts.md) — a 6-step
+  prompt sequence to guide an AI agent through the full integration flow
+  (audit → clarify → specs → tests → implementation → docs).
+- [`skill/musicme-integration/`](skill/) — a Claude Code / Cursor skill
+  that activates the integration flow with a single command and embeds
+  technical knowledge + troubleshooting.
 
 ---
 
