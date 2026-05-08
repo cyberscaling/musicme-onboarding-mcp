@@ -208,6 +208,72 @@ def register_partner(
 
 
 @mcp.tool()
+def update_allowed_origins(partner_id: str, allowed_origins: list[str]) -> dict[str, Any]:
+    """Replace the list of allowed origins for an already-registered partner.
+
+    Use this when the partner needs to add or remove a frontend origin
+    (e.g. add `http://localhost:5173` for local dev, swap a staging URL
+    for the production URL). The new list **replaces** the previous one
+    entirely — pass the full desired set, not a delta.
+
+    Args:
+        partner_id: The slug used when calling `register_partner`.
+        allowed_origins: Full new list of origins. Each must be either
+            an `https://...` URL or one of the loopback dev cases
+            (`http://localhost`, `http://127.0.0.1`, `http://[::1]`)
+            with optional port + path. Non-empty list required.
+
+    Returns:
+        On success, `{ partner_id, allowed_origins, updated_at }`.
+
+    Errors:
+        - `missing_config`: MUSICME_ONBOARDING_API_KEY is not set.
+        - `invalid_body`: Body validation failed; see `details`.
+        - `not_found` (HTTP 404): Unknown partner id.
+        - `unauthorized` (HTTP 401): Onboarding key wrong / revoked.
+    """
+    config = _require_config()
+    if isinstance(config, dict):
+        return config
+    admin_url, key = config
+
+    errors: list[str] = []
+    if not isinstance(partner_id, str) or not SLUG_RE.match(partner_id):
+        errors.append("partner_id must be a slug: lowercase alphanumeric + hyphens")
+    if not isinstance(allowed_origins, list) or len(allowed_origins) == 0:
+        errors.append("allowed_origins must be a non-empty list of origins")
+    elif not all(_is_allowed_origin(o) for o in allowed_origins):
+        errors.append(
+            "each origin must be https://... or http://localhost/127.0.0.1/[::1] (dev only)"
+        )
+    if errors:
+        return {"error": "invalid_body", "details": errors}
+
+    try:
+        with _client() as c:
+            resp = c.patch(
+                f"{admin_url}/api/onboarding/partners/{partner_id}",
+                headers={"X-Onboarding-Key": key, "Content-Type": "application/json"},
+                json={"allowed_origins": allowed_origins},
+            )
+    except httpx.RequestError as e:
+        return {"error": "network_error", "detail": str(e)}
+
+    try:
+        parsed = resp.json()
+    except ValueError:
+        parsed = {"_raw": resp.text[:500]}
+
+    if resp.status_code == 200:
+        return {"ok": True, **parsed}
+    return {
+        "error": "update_failed",
+        "status": resp.status_code,
+        "response": parsed,
+    }
+
+
+@mcp.tool()
 def get_partner_status(partner_id: str) -> dict[str, Any]:
     """Read back the configuration of an already-registered partner.
 
