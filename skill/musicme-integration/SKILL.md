@@ -127,10 +127,16 @@ TTL par défaut 300s. Pas de session côté JWT — la session est créée par
 
 ### SDK frontend
 
-Package: `@secure-audio-stream/client`. Classe principale:
-`SecureAudioPlayer({ workerUrl, getToken, mode, onError, onProgress, ... })`.
+Package npm public : `@cyberscaling/secure-audio-stream-client`. Install :
+`bun add @cyberscaling/secure-audio-stream-client` (ou pnpm/npm/yarn).
+Classe principale :
+`SecureAudioPlayer({ workerUrl, getToken, mode, onError, onProgress, metrics, onMetrics, ... })`.
 Le `getToken` est un callback qui doit retourner un JWT frais — appelle
 ta route backend `/api/player-token`.
+
+`mode: 'mse'` (recommandé) auto-résout au runtime entre `ManagedMediaSource`
+(iOS / macOS Safari 17.1+), `MediaSource` classique (autres browsers) et
+fallback `blob` (iOS <17.1). Aucun changement de code partenaire pour iOS.
 
 ### Origines acceptées
 

@@ -166,8 +166,9 @@ Items obligatoires (à ajuster selon la stack auditée):
   identifiée en phase 1)
 - WI-02: créer route backend POST /api/player-token (auth-gated, mint
   via X-Mint-Key)
-- WI-03: installer SDK @secure-audio-stream/client (ou code d'équivalent
-  manuel si SDK non disponible dans la stack)
+- WI-03: installer SDK `@cyberscaling/secure-audio-stream-client`
+  (`bun add @cyberscaling/secure-audio-stream-client`, ou pnpm/npm/yarn).
+  Le SDK est publié sur npm public, aucun token requis.
 - WI-04: composant frontend SecureAudioPlayer (wrapper SDK)
 - WI-05: brancher le composant au catalogue existant (selon source
   identifiée phase 1+2)

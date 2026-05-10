@@ -379,11 +379,18 @@ export default api
 
 ### 6.3 Frontend — utiliser le SDK
 
-Le SDK est publié sur notre registre interne (ou disponible en source dans `client/`). Il s'utilise ainsi :
+Le SDK est publié sur npm sous `@cyberscaling/secure-audio-stream-client`. Install :
+
+```bash
+bun add @cyberscaling/secure-audio-stream-client
+# ou: pnpm add / npm install / yarn add
+```
+
+Usage :
 
 ```typescript
 // frontend/src/player.ts
-import { SecureAudioPlayer } from '@secure-audio-stream/client'
+import { SecureAudioPlayer } from '@cyberscaling/secure-audio-stream-client'
 
 const STREAM_URL = 'https://stream.musicme.cc'
 
@@ -849,7 +856,7 @@ export async function POST(req: Request) {
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { SecureAudioPlayer } from '@secure-audio-stream/client'
+import { SecureAudioPlayer } from '@cyberscaling/secure-audio-stream-client'
 
 export default function PlayerPage() {
   const containerRef = useRef<HTMLDivElement>(null)
