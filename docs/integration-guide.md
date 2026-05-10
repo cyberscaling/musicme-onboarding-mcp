@@ -427,6 +427,16 @@ C'est tout. Le SDK :
 - envoie un `/heartbeat` toutes les 10 secondes pour qu'on facture précisément le temps d'écoute (et pour qu'on coupe la session à la fermeture d'onglet),
 - expose un `<audio>` HTML standard que tu peux styler comme n'importe quel élément.
 
+> **iOS — important**. `mode: 'mse'` couvre désormais trois chemins, choisis automatiquement par le SDK selon le navigateur. **Aucune modif du code partenaire n'est nécessaire** pour activer le streaming iOS — la même app web fonctionne sur tout le parc :
+>
+> | Browser détecté | Backend résolu | UX |
+> |---|---|---|
+> | iOS / macOS Safari **17.1+** | `ManagedMediaSource` (MMS) | Streaming progressif, économe en cellulaire |
+> | Chrome / Firefox / Edge / Safari desktop pré-17.1 | `MediaSource` classique | Streaming progressif (comportement actuel) |
+> | iOS Safari **<17.1** | `blob` (fallback auto) | Téléchargement complet avant lecture. `onError` reçoit un avertissement non-fatal `mms_fallback: no_media_source`. |
+>
+> Pour vérifier en prod, active `metrics: { enabled: true }` + `onMetrics` : le champ `report.mode` te dit lequel des trois a été utilisé pour chaque play.
+
 ### 6.4 Frontend — sans SDK (référence)
 
 Si tu ne peux pas utiliser le SDK (autre langage, environnement non-web), voici la séquence brute à reproduire :
@@ -517,6 +527,151 @@ async function decryptRange(
 Pour la lecture en MP4 : tu peux soit :
 - tout télécharger, déchiffrer, faire un `Blob` et `URL.createObjectURL` → `audio.src` (mode **blob**, simple, mais nécessite la fin du téléchargement avant de jouer) ;
 - utiliser MSE + une lib comme `mp4box.js` pour fragmenter à la volée (mode **mse**, ce que fait notre SDK).
+
+### 6.5 Plateformes non-web — iOS natif, Android natif, React Native
+
+Le SDK JavaScript dépend du DOM (`MediaSource` / `ManagedMediaSource`, `fetch`, `crypto.subtle`). Hors d'un navigateur, deux stratégies :
+
+#### 6.5.1 Webapp affichée dans iOS Safari (rappel)
+
+Cas le plus simple — couvert en §6.3 — **rien à faire de spécial**. Le SDK active `ManagedMediaSource` automatiquement à partir d'iOS 17.1 et fallback en `blob` sur les iOS antérieurs. C'est l'option recommandée pour les utilisateurs iPhone qui accèdent à ton site via Safari.
+
+#### 6.5.2 React Native (iOS + Android)
+
+Notre SDK ne tourne **pas** dans le runtime JS de React Native (pas de DOM, pas de `MediaSource`). Deux chemins :
+
+**A. WebView (recommandé)**
+
+Héberge la page web qui utilise le SDK dans un `react-native-webview`. L'engine WebKit d'iOS fournit `ManagedMediaSource` à partir d'iOS 17.1, donc tu obtiens le streaming progressif sans écrire une ligne de code natif.
+
+```tsx
+import { WebView } from 'react-native-webview'
+
+<WebView
+  source={{ uri: 'https://ton-site.fr/player?track=5400863209100/1/1' }}
+  allowsInlineMediaPlayback
+  mediaPlaybackRequiresUserAction={false}
+/>
+```
+
+Côté webapp partenaire, la page hébergée dans la WebView doit avoir l'origine déclarée dans `partners.allowed_origins`. Sur Android, le WebView Chromium supporte aussi `MediaSource` — tu obtiens le mode `mse` standard.
+
+Limites :
+- L'UI est celle de ta page web. Si tu veux contrôler le `<audio>` via du natif (lock screen iOS, contrôles AirPods, etc.), il te faut le chemin B.
+- Les WebView iOS ne diffusent pas le son en background sans config spécifique du `AVAudioSession` côté natif.
+
+**B. Player natif + bridge custom (chemin lourd)**
+
+Utilise `react-native-track-player` ou `expo-av` avec un module natif qui ré-implémente le flow `init-stream → key → /stream` + déchiffrement AES-CTR. Tu écris l'équivalent du SDK en Swift (iOS) et Kotlin (Android). À considérer **uniquement** si tu as besoin :
+
+- de contrôles de lecture natifs (CarPlay, Now Playing, AirPods),
+- de lecture en arrière-plan robuste,
+- d'une UX qui dépasse ce que le WebView permet.
+
+Le code Swift / Kotlin nécessaire est décrit dans 6.5.3 et 6.5.4 ; tu l'exposeras à JS via `NativeModules` ou un native module Expo.
+
+#### 6.5.3 Native iOS (Swift / SwiftUI / UIKit)
+
+Approche : `AVPlayer` avec un `AVAssetResourceLoaderDelegate` qui intercepte les range requests, fetch chiffré côté worker, déchiffre AES-CTR via `CryptoKit`, et répond à AVPlayer.
+
+```swift
+import AVFoundation
+import CryptoKit
+
+struct StreamSession {
+    let sessionId: String
+    let fileSize: Int
+    let keyB64: String
+    let ivB64: String
+}
+
+final class SecureStreamLoader: NSObject, AVAssetResourceLoaderDelegate {
+    private let workerUrl = URL(string: "https://stream.musicme.cc")!
+    private let session: StreamSession
+
+    init(session: StreamSession) { self.session = session }
+
+    func resourceLoader(_ loader: AVAssetResourceLoader,
+                        shouldWaitForLoadingOfRequestedResource req: AVAssetResourceLoadingRequest) -> Bool {
+        if let info = req.contentInformationRequest {
+            info.contentType = "audio/mp4"
+            info.contentLength = Int64(session.fileSize)
+            info.isByteRangeAccessSupported = true
+        }
+        guard let dataReq = req.dataRequest else { req.finishLoading(); return true }
+
+        let start = Int(dataReq.requestedOffset)
+        let end = start + dataReq.requestedLength - 1
+
+        Task {
+            do {
+                var r = URLRequest(url: workerUrl.appendingPathComponent("stream/\(session.sessionId)"))
+                r.setValue("bytes=\(start)-\(end)", forHTTPHeaderField: "Range")
+                let (cipher, resp) = try await URLSession.shared.data(for: r)
+                let http = resp as! HTTPURLResponse
+                let counterStart = Int(http.value(forHTTPHeaderField: "X-Counter-Start") ?? "0") ?? 0
+                let skipBytes = Int(http.value(forHTTPHeaderField: "X-Skip-Bytes") ?? "0") ?? 0
+                let plain = try aesCtrDecrypt(cipher: cipher,
+                                               keyB64: session.keyB64,
+                                               ivB64: session.ivB64,
+                                               counterStart: counterStart)
+                let payload = skipBytes > 0 ? plain.subdata(in: skipBytes..<plain.count) : plain
+                dataReq.respond(with: payload)
+                req.finishLoading()
+            } catch {
+                req.finishLoading(with: error)
+            }
+        }
+        return true
+    }
+}
+
+// AES-256-CTR avec compteur = base IV + counterStart (big-endian add).
+func aesCtrDecrypt(cipher: Data, keyB64: String, ivB64: String, counterStart: Int) throws -> Data {
+    var counter = [UInt8](Data(base64Encoded: ivB64)!)  // 16 octets
+    var carry = counterStart
+    var i = 15
+    while i >= 0 && carry > 0 {
+        let sum = Int(counter[i]) + (carry & 0xff)
+        counter[i] = UInt8(sum & 0xff)
+        carry = (carry >> 8) + (sum >> 8)
+        i -= 1
+    }
+    // CryptoKit n'expose pas AES-CTR directement. Utilise CommonCrypto (CCCrypt
+    // avec kCCAlgorithmAES + kCCModeCTR) ou un wrapper Swift dédié, ex.
+    // https://github.com/krzyzanowskim/CryptoSwift `AES(key:..., blockMode: CTR(iv:counter))`.
+    fatalError("plug your AES-CTR primitive here (CommonCrypto or CryptoSwift)")
+}
+```
+
+Câblage avec un scheme custom pour forcer AVPlayer à passer par le delegate :
+
+```swift
+let custom = URL(string: "secured://stream/\(session.sessionId)")!
+let asset = AVURLAsset(url: custom)
+let loader = SecureStreamLoader(session: session)
+asset.resourceLoader.setDelegate(loader, queue: DispatchQueue(label: "secure-stream"))
+let player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+player.play()
+```
+
+Étapes en amont (à faire une fois par morceau, depuis ton front natif) :
+1. Backend mint d'un JWT (route `/api/player-token` côté ton serveur, identique à la version web).
+2. `POST /init-stream` avec `Authorization: Bearer <jwt>` → récupère `sessionId`, `fileSize`, `keyB64`, `ivB64`.
+3. Construis la `StreamSession`, instancie `SecureStreamLoader`, lance AVPlayer.
+4. Heartbeat : un `Timer.scheduledTimer(withTimeInterval: 10)` qui POST `https://stream.musicme.cc/heartbeat/<sid>` avec `{ duration_ms: player.currentTime * 1000, complete: false }`. Au `playbackEnded` ou `destroy`, envoie un dernier heartbeat avec `complete: true`.
+
+Compter ~150 lignes Swift bien testées (loader + AES-CTR + heartbeat + gestion d'erreur). Ré-implémentation 1:1 du SDK web.
+
+#### 6.5.4 Native Android (Kotlin / Java)
+
+Approche miroir : ExoPlayer + un `DataSource.Factory` custom qui appelle `/init-stream` à l'ouverture du `MediaSource`, puis intercepte les `DataSpec` (offset + length) pour fetch + déchiffrer.
+
+- Déchiffrement : `Cipher.getInstance("AES/CTR/NoPadding")` avec `IvParameterSpec(counterBytes)` où `counterBytes = baseIv + counterStart` (même algo big-endian).
+- Heartbeat : `WorkManager` ou `Handler.postDelayed` toutes les 10 s.
+- Mêmes endpoints HTTP, mêmes en-têtes (`X-Counter-Start`, `X-Skip-Bytes`) que côté web/iOS.
+
+Pour la même raison qu'en 6.5.3, n'écris ce code que si la WebView ne couvre pas tes besoins UX.
 
 ---
 
@@ -616,8 +771,10 @@ Avant de pusher en prod :
 - [ ] IP statique de ton backend déclarée à l'opérateur musicme (CIDR allowlist).
 - [ ] Smoke test E2E : un utilisateur logué peut jouer un morceau sans erreur console.
 - [ ] Heartbeat visible dans les logs admin (Wrangler Tail / dashboard).
-- [ ] Page d'erreur si `onSessionExpired` ou `onError` du SDK est appelé.
+- [ ] Page d'erreur si `onSessionExpired` ou `onError` du SDK est appelé (note : `onError` est aussi appelé pour des avertissements **non-fatals** comme `mms_fallback: no_media_source` sur iOS <17.1 ; ne le traite pas comme une fin de lecture si `audio.src` est par la suite assigné).
 - [ ] HTTPS strict partout.
+- [ ] Smoke iOS : ouvre ton site sur un iPhone, joue un morceau. Si tu actives `metrics: { enabled: true }`, vérifie que `report.mode === 'mms'` sur iOS 17.1+ et `'blob'` sur iOS plus ancien.
+- [ ] Si tu cibles React Native ou natif iOS/Android : section §6.5 du présent guide pour le bon chemin (WebView vs réimplémentation native).
 
 Si tu coches tout, l'intégration est prête.
 
@@ -734,4 +891,4 @@ Avec ces ~70 lignes de code, l'intégration est faite.
 
 ---
 
-*Dernière mise à jour : 2026-05-08. En cas de doute, contacter l'opérateur musicme (le contact t'est fourni en même temps que l'`ONBOARDING_API_KEY`).*
+*Dernière mise à jour : 2026-05-10 — ajout du support iOS via `ManagedMediaSource` (auto-détecté côté SDK, aucun changement partenaire requis) et de la section §6.5 plateformes non-web (React Native, natif iOS/Android). En cas de doute, contacter l'opérateur musicme (le contact t'est fourni en même temps que l'`ONBOARDING_API_KEY`).*
