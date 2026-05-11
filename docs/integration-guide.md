@@ -1,5 +1,6 @@
 # Guide d'intégration partenaire — musicme
 
+
 Ce document s'adresse à un développeur qui veut **streamer la musique de notre catalogue depuis son propre site web** (lecteur audio sur sa page, paiement et logique métier de son côté). Il est volontairement progressif : la section *Vue d'ensemble* est compréhensible sans bagage cryptographique, puis on descend dans les détails techniques pour l'implémentation.
 
 > Public visé : développeur web qui sait écrire du code TypeScript / JavaScript (ou un équivalent) et qui peut faire un appel HTTP côté backend. Aucun prérequis sur les JWT, JWKS ou AES.
@@ -8,7 +9,7 @@ Ce document s'adresse à un développeur qui veut **streamer la musique de notre
 
 ## 0. TL;DR
 
-1. L'opérateur musicme te transmet une **clé d'onboarding** (`ONBOARDING_API_KEY`). Tu installes notre **MCP server** dans ton éditeur (Claude Code, Cursor, Claude Desktop) avec cette clé en variable d'environnement, puis tu demandes à l'agent : *« registre un nouveau partenaire `mon-site` avec origin `https://www.mon-site.fr` »*. L'agent appelle l'API d'onboarding et te renvoie une **clé de mint** (`MINT_KEY`) à stocker **immédiatement** dans ton gestionnaire de secrets — elle ne s'affichera jamais plus.
+1. l'opérateur musicme te transmet une **clé d'onboarding** (`ONBOARDING_API_KEY`). Tu installes notre **MCP server** dans ton éditeur (Claude Code, Cursor, Claude Desktop) avec cette clé en variable d'environnement, puis tu demandes à l'agent : *« registre un nouveau partenaire `mon-site` avec origin `https://www.mon-site.fr` »*. L'agent appelle l'API d'onboarding et te renvoie une **clé de mint** (`MINT_KEY`) à stocker **immédiatement** dans ton gestionnaire de secrets — elle ne s'affichera jamais plus.
 2. Côté **ton backend** (Node, PHP, Python, peu importe), tu fais un appel HTTP à notre serveur `admin-stream.musicme.cc` pour échanger la `MINT_KEY` contre un **JWT** (jeton court, 5 minutes de durée de vie).
 3. Côté **ton frontend** (la page web où le lecteur tourne), tu prends ce JWT et tu l'envoies au serveur de streaming `stream.musicme.cc` qui te retourne un identifiant de session + une URL de stream + une URL de clé.
 4. Ton lecteur **télécharge l'audio chiffré** depuis l'URL de stream, **récupère la clé** depuis l'URL de clé, **déchiffre** au vol et joue. Tu n'as pas à écrire la partie crypto : on fournit un SDK JavaScript prêt à l'emploi.
@@ -152,7 +153,7 @@ Tu disposes de deux chemins. Le premier (5.1) est recommandé : tu fais l'opéra
 
 ### 5.1 Self-service via le MCP (recommandé)
 
-L'opérateur musicme te transmet **une seule chose** : la valeur d'une `ONBOARDING_API_KEY` (chaîne hex de 64 caractères). C'est cette clé qui te donne le droit de créer ta propre entrée partenaire.
+l'opérateur musicme te transmet **une seule chose** : la valeur d'une `ONBOARDING_API_KEY` (chaîne hex de 64 caractères). C'est cette clé qui te donne le droit de créer ta propre entrée partenaire.
 
 **Installation du MCP**
 
@@ -171,7 +172,7 @@ Ajoute le bloc suivant à la config MCP de ton éditeur :
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/cyberscaling/musicme-onboarding-mcp.git@v0.2.0",
+        "git+https://github.com/cyberscaling/musicme-onboarding-mcp.git@v0.2.1",
         "musicme-onboarding-mcp"
       ],
       "env": {
@@ -223,7 +224,7 @@ Réponse :
 }
 ```
 
-⚠️ **Le champ `mint_key` n'apparaîtra plus jamais.** Avant que tu fasses la moindre autre chose, copie-le dans ton gestionnaire de secrets (1Password, Vault, AWS Secrets Manager, GCP Secret Manager, etc.) sous le label `MUSICME_MINT_KEY`. Si tu le perds, il faut révoquer + en re-mint un autre via l'opérateur musicme.
+⚠️ **Le champ `mint_key` n'apparaîtra plus jamais.** Avant que tu fasses la moindre autre chose, copie-le dans ton gestionnaire de secrets (1Password, Vault, AWS Secrets Manager, GCP Secret Manager, etc.) sous le label `MUSICME_MINT_KEY`. Si tu le perds, il faut révoquer + en re-mint un autre côté l'opérateur musicme.
 
 **Vérification**
 
@@ -265,7 +266,7 @@ Puis dans Claude Code : `/musicme-integration` pour activer la skill, et coller 
 
 ### 5.2 Création manuelle par l'opérateur musicme (fallback)
 
-Si pour une raison ou une autre tu n'utilises pas le MCP, Pierre peut faire la création depuis l'admin UI. Sur `https://admin-stream.musicme.cc`, l'admin :
+Si pour une raison ou une autre tu n'utilises pas le MCP, l'opérateur musicme peut faire la création depuis l'admin UI. Sur `https://admin-stream.musicme.cc`, l'admin :
 
 1. crée un partenaire (`POST /api/partners`) avec `id`, `name`, `allowed_origins` ;
 2. bascule en mode managé (`POST /api/admin/keys/<id>/rotate`) — génère la paire RSA-2048, met `auth_mode = 'managed'`, fixe `jwks_url = https://admin-stream.musicme.cc/api/jwks/<id>` ;
@@ -386,6 +387,8 @@ bun add @cyberscaling/secure-audio-stream-client
 # ou: pnpm add / npm install / yarn add
 ```
 
+(Source disponible dans `client/` du monorepo si tu veux vendor.)
+
 Usage :
 
 ```typescript
@@ -443,6 +446,118 @@ C'est tout. Le SDK :
 > | iOS Safari **<17.1** | `blob` (fallback auto) | Téléchargement complet avant lecture. `onError` reçoit un avertissement non-fatal `mms_fallback: no_media_source`. |
 >
 > Pour vérifier en prod, active `metrics: { enabled: true }` + `onMetrics` : le champ `report.mode` te dit lequel des trois a été utilisé pour chaque play.
+
+#### 6.3.1 Cache warm-up — diviser la latence par 3-4
+
+Le `play → canplay` froid (premier listener d'une track inactive depuis longtemps) tourne autour de 1.5-2s. La majorité de ce temps vient de caches serveur vides :
+- résolution catalogue `(cb,disc,track) → mid` (b-tree R2)
+- `HEAD` Scaleway pour `fileSize`
+- premier `Range` Scaleway pour le bloc initial
+
+Deux helpers SDK que tu appelles au bon moment ramènent ça à 400-500ms :
+
+**`prefetchAlbum(workerUrl, token, cb)`** — fire-and-forget **sur le mount de ta page album**. Le SDK orchestre côté worker la pré-chauffe parallèle de : album KV (toutes les tracks du cb), head KV (par mid), edge cache block 0 (par mid). Le user fait défiler ton album, tape une track → premier play warm. Aucun await nécessaire côté UI.
+
+> Pour les albums longs (>8 tracks), le SDK chunke automatiquement en plusieurs invocations Worker parallèles afin de rester sous la limite Cloudflare de 50 subrequests/invocation. Tu n'as rien à gérer — l'API publique reste un seul appel.
+
+```typescript
+import { prefetchAlbum } from '@cyberscaling/secure-audio-stream-client'
+
+// Sur ouverture de la page album/track-list
+useEffect(() => {
+  void prefetchAlbum(STREAM_URL, token, cb).catch(() => {})  // non-fatal
+}, [cb])
+```
+
+Le worker ne crée **pas** de sessions : la facturation play n'est pas impactée tant que le user n'appuie pas sur play.
+
+**`prefetchSession(workerUrl, token, ref)`** — pour de l'**auto-advance gapless**. Pendant la lecture de la track N (typiquement `currentTime > duration - 5s`), tu pre-crées la session N+1 ; sur fin de N tu fais `player.loadPrefetched(session)`. Zéro latence au switch.
+
+```typescript
+import { prefetchSession } from '@cyberscaling/secure-audio-stream-client'
+
+audio.addEventListener('timeupdate', () => {
+  if (audio.duration - audio.currentTime < 5 && !nextPrepared) {
+    nextPrepared = prefetchSession(STREAM_URL, token, nextRef)
+  }
+})
+audio.addEventListener('ended', async () => {
+  await player.loadPrefetched(await nextPrepared)
+  void player.play()
+})
+```
+
+**Caches serveur visibles via headers** (utile pour debug) :
+- `X-Cache: HIT|MISS|PARTIAL` sur `/stream` → état du cache edge bloc demandé
+- `Server-Timing: app;dur=X, jwt;dur=…, mid;dur=…, head;dur=…, do_put;dur=…, ...` sur `/init-stream`, `/key`, `/stream` → breakdown par phase serveur
+
+Si tu observes des `init_session` >300ms en steady-state, c'est probablement un cold isolate (Cloudflare évince après inactivité prolongée). Solutions : appel régulier sur tes pages, ou un cron warmup tier sur ton top-N albums.
+
+#### 6.3.2 Playlist — auto-advance dynamique
+
+Pour les contextes "lecture en file" (radio, suite d'album, queue partagée), le SDK expose une classe `Playlist` qui compose le `SecureAudioPlayer` et gère le pré-fetch du prochain morceau, l'auto-advance gapless, et les mutations live (insert/move/remove pendant la lecture).
+
+**Construction minimale :**
+
+```typescript
+import { Playlist } from '@cyberscaling/secure-audio-stream-client'
+
+const playlist = new Playlist({
+  workerUrl: 'https://stream.musicme.cc',
+  getToken: async () => (await fetch('/api/player-token', { credentials: 'include' })).json().then(j => j.token),
+  audioElement: document.getElementById('player') as HTMLAudioElement,
+  items: [
+    { cb: 5400863209100, disc: 1, track: 1 },
+    { cb: 3663729427441, disc: 1, track: 7 },
+  ],
+  onCurrentChange: (curr, prev) => updateNowPlayingUi(curr),
+})
+
+await playlist.play()
+```
+
+Le pré-fetch est en deux couches :
+
+1. **Session lookahead** = `2` (défaut) — les 2 prochains tracks ont leur session + clé pré-créées via `prefetchSession`. Track-to-track latency ≈ 50 ms.
+2. **KV lookahead** = `5` (défaut) — les 5 prochains tracks ont leur `mid` + `head` + edge cache pré-chauffés via `POST /warmup-tracks` (un endpoint du stream worker conçu pour des refs hétérogènes cross-album). Une playlist mixte se comporte comme un album in-isolate.
+
+**Mutations live** — sans interruption audio :
+
+```typescript
+playlist.insert({ cb: …, disc: 1, track: 5 }, /* position */ 1)
+playlist.move(itemId, /* newPosition */ 0)
+playlist.remove(itemId)
+playlist.setItems([…])         // reset complet
+```
+
+**Évènements** :
+
+- `onItemsChange(items)` — fired après chaque mutation
+- `onCurrentChange(curr, prev)` — fired sur `play()`, `next()`, `prev()`, auto-advance
+- `onPrefetchState(e)` — `{itemId, ref, layer, state}` avec `layer ∈ {session, kv}`, `state ∈ {pending, ready, error, invalidated}` — utile pour observabilité
+
+**Migration depuis une intégration 0.2.x** (manuel "next track on ended") :
+
+```typescript
+// Avant (0.2.x)
+player.audio.addEventListener('ended', () => {
+  const next = myQueue.shift()
+  if (next) void player.load(next)
+})
+
+// Après (0.3.x)
+const playlist = new Playlist({ workerUrl, getToken, items: myQueue, onCurrentChange: (c) => updateUi(c) })
+await playlist.play()
+// Plus rien à câbler — auto-advance + prefetch gérés
+```
+
+**Pattern UX "playlist persistante" (référence : `demos/webapp/public/playlist-store.ts`)** :
+
+Sépare deux concepts côté store applicatif :
+- **`savedQueue`** : liste persistante (localStorage), modifiée seulement par `+ enqueue`, `drag-reorder`, `remove`
+- **`audioPlaylist`** : l'instance `Playlist` SDK qui pilote `<audio>` ; chargée soit avec `savedQueue` (mode 'queue'), soit avec une liste éphémère (mode 'ephemeral' — album play-all, single track play)
+
+Cela permet à l'utilisateur de cliquer "Play this track" sans détruire sa file en cours.
 
 ### 6.4 Frontend — sans SDK (référence)
 
@@ -635,6 +750,7 @@ final class SecureStreamLoader: NSObject, AVAssetResourceLoaderDelegate {
 
 // AES-256-CTR avec compteur = base IV + counterStart (big-endian add).
 func aesCtrDecrypt(cipher: Data, keyB64: String, ivB64: String, counterStart: Int) throws -> Data {
+    let key = SymmetricKey(data: Data(base64Encoded: keyB64)!)
     var counter = [UInt8](Data(base64Encoded: ivB64)!)  // 16 octets
     var carry = counterStart
     var i = 15
@@ -644,9 +760,11 @@ func aesCtrDecrypt(cipher: Data, keyB64: String, ivB64: String, counterStart: In
         carry = (carry >> 8) + (sum >> 8)
         i -= 1
     }
-    // CryptoKit n'expose pas AES-CTR directement. Utilise CommonCrypto (CCCrypt
+    let nonce = try AES.GCM.Nonce(data: Data(counter))
+    // Note: CryptoKit n'expose pas AES-CTR directement. Utilise CommonCrypto (CCCrypt
     // avec kCCAlgorithmAES + kCCModeCTR) ou un wrapper Swift dédié, ex.
     // https://github.com/krzyzanowskim/CryptoSwift `AES(key:..., blockMode: CTR(iv:counter))`.
+    // L'objet `nonce` ci-dessus est un placeholder — remplace par l'appel CTR effectif.
     fatalError("plug your AES-CTR primitive here (CommonCrypto or CryptoSwift)")
 }
 ```
@@ -686,12 +804,12 @@ Pour la même raison qu'en 6.5.3, n'écris ce code que si la WebView ne couvre p
 
 | Variable | Côté | Donné par | Exemple |
 |---|---|---|---|
-| `PARTNER_ID` | backend | opérateur musicme | `mon-site` |
-| `MINT_KEY` | backend | opérateur musicme (one-shot) | `mk_live_…` |
+| `PARTNER_ID` | backend | l'opérateur musicme | `mon-site` |
+| `MINT_KEY` | backend | l'opérateur musicme (one-shot) | `mk_live_…` |
 | `ADMIN_URL` | backend | constante | `https://admin-stream.musicme.cc` |
 | `STREAM_URL` | frontend | constante | `https://stream.musicme.cc` |
-| Allowed origins | déclaré côté admin | Pierre via le partner record | `https://www.mon-site.fr` |
-| Static IP serveur | déclaré côté admin (CIDR) | toi → opérateur musicme | `1.2.3.4/32` |
+| Allowed origins | déclaré côté admin | l'opérateur musicme via le partner record | `https://www.mon-site.fr` |
+| Static IP serveur | déclaré côté admin (CIDR) | toi → l'opérateur musicme | `1.2.3.4/32` |
 
 ---
 
@@ -726,8 +844,8 @@ Pour la même raison qu'en 6.5.3, n'écris ce code que si la WebView ne couvre p
 | `mint failed: HTTP 401 missing_mint_key` | Header `X-Mint-Key` absent ou vide | Vérifie l'envvar ; vérifie que le fetch ne réécrit pas les headers. |
 | `mint failed: HTTP 401 invalid_mint_key` | Mauvaise clé, ou clé révoquée | Demande à l'opérateur musicme de re-mint une clé. |
 | `mint failed: HTTP 403 ip_not_allowed` | IP du serveur backend pas dans `INTERNAL_MINT_CIDRS` | Donne ton IP statique à l'opérateur musicme. En dev, configurer `DEV_AUTH_BYPASS=1` côté admin (jamais en prod). |
-| `mint failed: HTTP 400 partner_not_in_managed_mode` | Partenaire en mode `jwks` côté admin | l'opérateur doit faire `POST /api/admin/keys/<id>/rotate`. |
-| `mint failed: HTTP 500 no_active_key` | Aucune clé active pour ton partenaire | l'opérateur doit faire un `rotate` initial pour créer la première paire. |
+| `mint failed: HTTP 400 partner_not_in_managed_mode` | Partenaire en mode `jwks` côté admin | l'opérateur musicme doit faire `POST /api/admin/keys/<id>/rotate`. |
+| `mint failed: HTTP 500 no_active_key` | Aucune clé active pour ton partenaire | l'opérateur musicme doit faire un `rotate` initial pour créer la première paire. |
 
 ### 9.3 Streaming (frontend / SDK)
 
@@ -738,12 +856,12 @@ Pour la même raison qu'en 6.5.3, n'écris ce code que si la WebView ne couvre p
 | `stream HTTP 403 fingerprint_mismatch` | Le client qui appelle `/stream` n'a pas la même IP / user-agent que celui qui a fait `/init-stream` | Relance le flow depuis le même navigateur / même session. Ne **pas** réutiliser un `sessionId` minté côté backend pour servir au frontend. |
 | `stream HTTP 410 session_expired` | Session > TTL (5 min par défaut) | Le SDK gère ce cas via `onSessionExpired` ; si tu fais ton propre code, recommence à `/init-stream`. |
 | Lecture MSE échoue avec `SourceBuffer error code=4` | MP4 non fragmenté | Utiliser `mode: 'mse'` (le SDK fragmente au vol via mp4box.js) ou tomber en `mode: 'blob'`. |
-| `403` sur `/stream` côté CORS | Origine pas dans `allowed_origins` | l'opérateur l'ajoute. Vérifie aussi le CORS preflight (OPTIONS). |
+| `403` sur `/stream` côté CORS | Origine pas dans `allowed_origins` | l'opérateur musicme l'ajoute. Vérifie aussi le CORS preflight (OPTIONS). |
 
 Pour aider au debug, le worker écrit ses warnings dans Wrangler Tail :
 
 ```bash
-# Côté opérateur musicme
+# Côté l'opérateur musicme
 bunx wrangler tail secure-audio-stream --env production
 ```
 
@@ -898,4 +1016,4 @@ Avec ces ~70 lignes de code, l'intégration est faite.
 
 ---
 
-*Dernière mise à jour : 2026-05-10 — ajout du support iOS via `ManagedMediaSource` (auto-détecté côté SDK, aucun changement partenaire requis) et de la section §6.5 plateformes non-web (React Native, natif iOS/Android). En cas de doute, contacter l'opérateur musicme (le contact t'est fourni en même temps que l'`ONBOARDING_API_KEY`).*
+*Dernière mise à jour : 2026-05-10 — ajout du support iOS via `ManagedMediaSource` (auto-détecté côté SDK, aucun changement partenaire requis) et de la section §6.5 plateformes non-web (React Native, natif iOS/Android). En cas de doute, contacter l'opérateur musicme (`musicme@`).*
