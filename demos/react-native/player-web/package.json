@@ -1,0 +1,18 @@
+{
+  "name": "sas-demo-rn-player-web",
+  "version": "0.0.1",
+  "private": true,
+  "description": "WebView HTML bundle (inlined JS) for the RN demo. Imports @cyberscaling/secure-audio-stream-client and exposes window.startPlayer.",
+  "type": "module",
+  "scripts": {
+    "build": "bun run build.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cyberscaling/secure-audio-stream-client": "^0.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/bun": "^1.1.0"
+  }
+}

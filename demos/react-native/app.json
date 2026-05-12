@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "SAS Demo RN",
+    "slug": "sas-demo-rn",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "scheme": "sasdemorn",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "cc.musicme.sasdemo.rn",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "cc.musicme.sasdemo.rn"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

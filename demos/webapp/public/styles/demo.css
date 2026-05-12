@@ -1,0 +1,364 @@
+/* webapp overrides + extras on top of admin-pages charter. */
+
+/* The demo is a single workspace bar + main, no nav rail. We let the page
+ * scroll globally (sticky topbar) instead of nesting an internal scroll —
+ * matters on long album views where browser-native scroll feels right. */
+html, body, #root { height: auto; min-height: 100%; }
+.app {
+  display: block;
+  height: auto;
+  min-height: 100vh;
+}
+.app > .workspace-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.app > main {
+  overflow: visible;
+}
+
+.workspace-bar .nav {
+  display: flex;
+  gap: var(--ds-spacing-md);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.workspace-bar .nav a {
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+.workspace-bar .nav a:hover {
+  color: var(--text-bright);
+  background: var(--ink-overlay);
+}
+.workspace-bar .nav a.active {
+  color: var(--indigo);
+  background: var(--indigo-soft);
+}
+
+main {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+/* ── Album view ── */
+.album-meta {
+  display: flex;
+  gap: var(--ds-spacing-xl);
+  margin-bottom: var(--ds-spacing-xl);
+  align-items: baseline;
+}
+.album-meta .title-album {
+  font-family: var(--sans);
+  font-size: 22px;
+  color: var(--text-bright);
+  margin: 0;
+}
+.album-meta .artists {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.album-meta .release {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.tracklist {
+  width: 100%;
+  border-collapse: collapse;
+}
+.tracklist th, .tracklist td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-quiet);
+  font-family: var(--mono);
+  font-size: 13px;
+  text-align: left;
+}
+.tracklist th {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.tracklist td.title { color: var(--text-bright); font-family: var(--sans); }
+.tracklist td.num { color: var(--text-muted); width: 40px; text-align: right; }
+.tracklist td.dur { color: var(--text-muted); width: 60px; text-align: right; }
+.tracklist td.action { width: 80px; text-align: right; }
+.tracklist tr.playing td { background: var(--indigo-soft); }
+.tracklist tr:hover { background: var(--ink-overlay); }
+.tracklist .play-btn {
+  background: transparent;
+  color: var(--indigo);
+  border: 1px solid var(--indigo-line);
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.tracklist .play-btn:hover { background: var(--indigo-soft); }
+
+/* Persistent player — fixed to viewport bottom, always visible while
+ * scrolling the tracklist. Pushes main content up via padding-bottom. */
+.player-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--ink-raised);
+  border-top: 1px solid var(--border-quiet);
+  padding: var(--ds-spacing-md) var(--ds-spacing-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-spacing-lg);
+  z-index: 20;
+  min-height: 80px;
+}
+.player-bar.empty .now-playing { color: var(--text-muted); font-style: italic; }
+.player-bar .cover {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  background: var(--ink-deep);
+  border: 1px solid var(--border-quiet);
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+}
+.player-bar .now-playing {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.player-bar .np-title {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--text-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-bar .np-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.player-bar .np-status {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--signal-success);
+}
+.player-bar .np-status.err { color: var(--signal-error); }
+.player-bar audio {
+  width: 360px;
+  flex-shrink: 0;
+}
+
+/* push main content above the fixed player bar */
+.has-player main { padding-bottom: 120px; }
+
+/* ── Auth-explain page (interactive) ── */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-spacing-md);
+  margin-bottom: var(--ds-spacing-xl);
+}
+.step {
+  background: var(--ink-raised);
+  border: 1px solid var(--border-quiet);
+  border-radius: var(--radius-md);
+  padding: var(--ds-spacing-lg);
+  position: relative;
+}
+.step.active {
+  border-color: var(--indigo);
+  background: var(--indigo-soft);
+}
+.step.done {
+  border-color: var(--signal-success);
+}
+.step-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--indigo);
+  margin-bottom: 4px;
+}
+.step h3 {
+  margin: 0 0 var(--ds-spacing-xs);
+  font-size: 14px;
+  color: var(--text-bright);
+}
+.step p {
+  margin: 0 0 var(--ds-spacing-md);
+  color: var(--text-body);
+  font-size: 13px;
+}
+.step pre {
+  background: var(--ink-deep);
+  border: 1px solid var(--border-quiet);
+  border-radius: var(--radius-sm);
+  padding: var(--ds-spacing-md);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-body);
+  overflow-x: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.step .out {
+  margin-top: var(--ds-spacing-md);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--signal-success);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.step .out.err {
+  color: var(--signal-error);
+}
+.step .meta-line {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: var(--ds-spacing-xs);
+}
+
+/* ── Sequence diagram (SVG-based, animated per step) ── */
+.seq-diagram {
+  background: var(--ink-raised);
+  border: 1px solid var(--border-quiet);
+  border-radius: var(--radius-md);
+  padding: var(--ds-spacing-lg);
+  margin-bottom: var(--ds-spacing-xl);
+}
+.seq-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-spacing-md);
+  padding-bottom: var(--ds-spacing-md);
+  border-bottom: 1px solid var(--border-quiet);
+  margin-bottom: var(--ds-spacing-md);
+}
+.seq-controls .play-pause {
+  background: var(--indigo);
+  color: var(--text-bright);
+  border: 1px solid var(--indigo);
+  padding: 6px 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  width: 76px;
+  text-align: center;
+}
+.seq-controls .play-pause.paused {
+  background: transparent;
+  color: var(--indigo);
+}
+.seq-controls .step-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--indigo);
+  background: var(--indigo-soft);
+  border: 1px solid var(--indigo-line);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+.seq-controls .step-title {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text-bright);
+  flex: 1;
+}
+.seq-controls .progress-track {
+  width: 120px;
+  height: 4px;
+  background: var(--border-quiet);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.seq-controls .progress-fill {
+  height: 100%;
+  background: var(--indigo);
+  width: 0%;
+  transition: width 0.1s linear;
+}
+.seq-diagram svg { width: 100%; height: auto; display: block; font-family: var(--mono); }
+
+.seq-diagram .actor-box {
+  fill: var(--ink-overlay);
+  stroke: var(--border-quiet);
+}
+.seq-diagram .actor-box.partner { stroke: var(--indigo); }
+.seq-diagram .actor-label {
+  fill: var(--text-bright);
+  font-size: 11px;
+  font-weight: 500;
+}
+.seq-diagram .actor-sub {
+  fill: var(--text-muted);
+  font-size: 9px;
+}
+.seq-diagram .lifeline {
+  stroke: var(--border-quiet);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+
+/* Each .msg group is hidden by default; step JS toggles `.active` to play
+ * the arrow-drawing animation. `data-dir="req"` arrows go forward (down),
+ * `data-dir="res"` come back (up). */
+.seq-diagram .msg { opacity: 0; transition: opacity 0.2s ease; }
+.seq-diagram .msg.active,
+.seq-diagram .msg.done { opacity: 1; }
+
+.seq-diagram .msg-line {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 800;
+  stroke-dashoffset: 800;
+  transition: stroke-dashoffset 0.5s ease;
+}
+.seq-diagram .msg.active .msg-line,
+.seq-diagram .msg.done .msg-line {
+  stroke-dashoffset: 0;
+}
+.seq-diagram .msg.active .msg-line { stroke: var(--indigo); }
+.seq-diagram .msg.active .msg-label { fill: var(--indigo); }
+.seq-diagram .msg.done .msg-line { stroke: var(--signal-success); }
+.seq-diagram .msg.done .msg-label { fill: var(--text-body); }
+
+.seq-diagram .msg-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-family: var(--mono);
+  text-anchor: middle;
+}
+.seq-diagram .msg-arrow {
+  fill: var(--text-muted);
+  transition: fill 0.2s ease;
+}
+.seq-diagram .msg.active .msg-arrow { fill: var(--indigo); }
+.seq-diagram .msg.done .msg-arrow { fill: var(--signal-success); }
+
+.seq-diagram .step-band {
+  fill: var(--indigo-soft);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.seq-diagram .step-band.active { opacity: 1; }
+
+/* Pulse animation while in-flight */
+@keyframes seqPulse {
+  0%   { stroke-width: 1.5; }
+  50%  { stroke-width: 3; }
+  100% { stroke-width: 1.5; }
+}
+.seq-diagram .msg.active .msg-line { animation: seqPulse 1s ease-in-out infinite; }
+.seq-diagram .msg.done .msg-line { animation: none; }

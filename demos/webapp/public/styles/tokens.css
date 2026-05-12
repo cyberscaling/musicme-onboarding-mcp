@@ -1,0 +1,61 @@
+/* Stream Admin — design tokens. Source: system-design/01-design-system.md */
+
+:root {
+  /* Encre — surfaces */
+  --ink-deep: #0a0a0f;
+  --ink-raised: #13131c;
+  --ink-overlay: #1c1c28;
+  --border-quiet: #2e2e40;
+  --border-focus: #4e4e6e;
+
+  /* Texte */
+  --text-bright: #ededf4;
+  --text-body: #d0d0de;
+  --text-muted: #808092;
+
+  /* Accent (indigo par défaut) */
+  --indigo: #7c6cf0;
+  --indigo-dim: #5a4ec0;
+  --indigo-line: rgba(124, 108, 240, 0.25);
+  --indigo-soft: rgba(124, 108, 240, 0.10);
+
+  /* Signaux */
+  --signal-success: #4ade80;
+  --signal-warning: #fbbf24;
+  --signal-error: #f87171;
+
+  /* Familles */
+  --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
+
+  /* Spacing */
+  --ds-spacing-xs: 4px;
+  --ds-spacing-sm: 8px;
+  --ds-spacing-md: 12px;
+  --ds-spacing-lg: 16px;
+  --ds-spacing-xl: 24px;
+  --ds-spacing-2xl: 32px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+}
+
+[data-theme='light'] {
+  --ink-deep: #f5f5f7;
+  --ink-raised: #ffffff;
+  --ink-overlay: #eaeaef;
+  --border-quiet: #d0d0da;
+  --border-focus: #a4a4b8;
+  --text-bright: #0a0a12;
+  --text-body: #2a2a35;
+  --text-muted: #6a6a7a;
+  --indigo: #6c5ce7;
+  --indigo-dim: #4d40b0;
+  --indigo-line: rgba(108, 92, 231, 0.30);
+  --indigo-soft: rgba(108, 92, 231, 0.10);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
