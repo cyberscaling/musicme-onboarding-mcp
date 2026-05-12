@@ -7,6 +7,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { TopNav } from '@/components/TopNav'
+import { DownloadButton } from '@/components/DownloadButton'
 import { usePlayer } from '@/lib/playerStore'
 
 function pad(n: number, w = 2): string {
@@ -53,12 +54,24 @@ export default function PlayerScreen() {
       showsVerticalScrollIndicator
     >
 
-      <Text style={styles.title} numberOfLines={2}>
-        {track.title ?? `cb ${track.cb} · d${track.disc} · t${track.track}`}
-      </Text>
-      <Text style={styles.muted}>
-        cb={track.cb} · disc={track.disc} · track={track.track}
-      </Text>
+      <View style={styles.titleRow}>
+        <View style={styles.titleCol}>
+          <Text style={styles.title} numberOfLines={2}>
+            {track.title ?? `cb ${track.cb} · d${track.disc} · t${track.track}`}
+          </Text>
+          <Text style={styles.muted}>
+            cb={track.cb} · disc={track.disc} · track={track.track}
+          </Text>
+        </View>
+        <DownloadButton
+          trackId={`${track.cb}:${track.disc}:${track.track}`}
+          metaJson={JSON.stringify({
+            ...(track.title ? { title: track.title } : {}),
+            ...(track.artist ? { artist: track.artist } : {}),
+            duration: p.duration,
+          })}
+        />
+      </View>
 
       <View style={styles.timeRow}>
         <Text style={styles.timeText}>{formatTime(p.currentTime)}</Text>
@@ -195,6 +208,8 @@ const styles = StyleSheet.create({
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#444', alignSelf: 'center', marginVertical: 8 },
   title: { color: '#eee', fontSize: 18, fontWeight: '600', marginTop: 4 },
   muted: { color: '#777', fontSize: 11, fontFamily: 'Menlo', marginTop: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  titleCol: { flex: 1 },
   timeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, gap: 8 },
   timeText: { color: '#bbb', fontFamily: 'Menlo', fontSize: 11, width: 78 },
   progressTrack: { flex: 1, height: 4, backgroundColor: '#222', borderRadius: 2 },

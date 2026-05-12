@@ -13,6 +13,7 @@ const TABS = [
   { name: 'home', icon: 'home-outline' as const, label: 'Accueil' },
   { name: 'search', icon: 'search-outline' as const, label: 'Recherche' },
   { name: 'library', icon: 'albums-outline' as const, label: 'Library' },
+  { name: 'downloads', icon: 'download-outline' as const, label: 'Downloads' },
 ]
 
 export const TAB_BAR_BASE_HEIGHT = 49

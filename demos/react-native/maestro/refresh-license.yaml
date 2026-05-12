@@ -1,0 +1,9 @@
+appId: cc.musicme.sasdemo.rn
+---
+- launchApp
+- pressKey: Home
+- waitForAnimationToEnd
+- launchApp
+- tapOn: "Downloads"
+- assertVisible:
+    index: 0

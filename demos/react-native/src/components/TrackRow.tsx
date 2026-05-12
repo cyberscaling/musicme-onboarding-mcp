@@ -6,6 +6,7 @@
  */
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Cover } from './Cover'
+import { DownloadButton } from './DownloadButton'
 import type { Track } from '@/lib/catalog'
 
 function formatDuration(seconds: number): string {
@@ -23,6 +24,12 @@ export function TrackRow(props: {
   onEnqueue?: () => void
 }) {
   const t = props.track
+  const trackId = `${t.cb}:${t.disc}:${t.track}`
+  const metaJson = JSON.stringify({
+    title: t.title,
+    ...(t.artist ? { artist: t.artist } : {}),
+    duration: t.durationSec,
+  })
   return (
     <View style={styles.row}>
       {props.onEnqueue ? (
@@ -54,6 +61,7 @@ export function TrackRow(props: {
         </View>
         <Text style={styles.dur}>{formatDuration(t.durationSec)}</Text>
       </Pressable>
+      <DownloadButton trackId={trackId} metaJson={metaJson} />
     </View>
   )
 }

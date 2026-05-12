@@ -6,9 +6,12 @@
       "name": "@cyberscaling/secure-audio-stream-demo-rn",
       "dependencies": {
         "@cyberscaling/secure-audio-stream-client": "^0.1.0",
+        "@demos/offline": "file:./modules/offline",
         "@react-native-async-storage/async-storage": "2.2.0",
+        "@react-native-community/netinfo": "^12.0.1",
         "expo": "~55.0.23",
         "expo-constants": "~55.0.16",
+        "expo-file-system": "^55.0.19",
         "expo-router": "~55.0.14",
         "expo-status-bar": "~55.0.6",
         "react": "19.2.0",
@@ -214,6 +217,8 @@
 
     "@cyberscaling/secure-audio-stream-client": ["@cyberscaling/secure-audio-stream-client@0.1.0", "", { "dependencies": { "mp4box": "^0.5.2" } }, "sha512-GlGSyX0XH37YjKxxVW5a6AIdgKkwZJfFqJ6jMjlLwjT3AP9epT9jGcxw2zHbvcTL1Sc7VH1tIdljYW5qTCS/vw=="],
 
+    "@demos/offline": ["@demos/offline@file:modules/offline", {}],
+
     "@egjs/hammerjs": ["@egjs/hammerjs@2.0.17", "", { "dependencies": { "@types/hammerjs": "^2.0.36" } }, "sha512-XQsZgjm2EcVUiZQf11UBJQfmZeEmOW8DpI1gsFeln6w0ae0ii4dMQEQ0kjl6DspdWX1aGY1/loyXnP0JS06e/A=="],
 
     "@expo-google-fonts/material-symbols": ["@expo-google-fonts/material-symbols@0.4.36", "", {}, "sha512-hFIN8h99qUid9OppB9Sj18sUQib2O0I9c0soBmgb932Kz+20pAaGe/PRH6NdAqm8/DdOs+Hwx8A4Fqn9ZNadhg=="],
@@ -351,6 +356,8 @@
     "@radix-ui/react-use-layout-effect": ["@radix-ui/react-use-layout-effect@1.1.1", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-RbJRS4UWQFkzHTTwVymMTUv8EqYhOp8dOOviLj2ugtTiXRaRQS7GLGxZTLL1jWhMeoSCf5zmcZkqTl9IiYfXcQ=="],
 
     "@react-native-async-storage/async-storage": ["@react-native-async-storage/async-storage@2.2.0", "", { "dependencies": { "merge-options": "^3.0.4" }, "peerDependencies": { "react-native": "^0.0.0-0 || >=0.65 <1.0" } }, "sha512-gvRvjR5JAaUZF8tv2Kcq/Gbt3JHwbKFYfmb445rhOj6NUMx3qPLixmDx5pZAyb9at1bYvJ4/eTUipU5aki45xw=="],
+
+    "@react-native-community/netinfo": ["@react-native-community/netinfo@12.0.1", "", { "peerDependencies": { "react": "*", "react-native": ">=0.59" } }, "sha512-P/3caXIvfYSJG8AWJVefukg+ZGRPs+M4Lp3pNJtgcTYoJxCjWrKQGNnCkj/Cz//zWa/avGed0i/wzm0T8vV2IQ=="],
 
     "@react-native/assets-registry": ["@react-native/assets-registry@0.83.6", "", {}, "sha512-iljb4ue1yWJ3EhySz7EjV6CzSVrI2uNtR8BI2jzP5+QS5E4Cl3fdIJRmVwDEx1pu8uE97PGEusGRHnoaZ9Q3jg=="],
 

@@ -15,9 +15,12 @@
   },
   "dependencies": {
     "@cyberscaling/secure-audio-stream-client": "^0.1.0",
+    "@demos/offline": "file:./modules/offline",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "^12.0.1",
     "expo": "~55.0.23",
     "expo-constants": "~55.0.16",
+    "expo-file-system": "^55.0.19",
     "expo-router": "~55.0.14",
     "expo-status-bar": "~55.0.6",
     "react": "19.2.0",

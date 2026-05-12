@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["OfflineExpoModule"]
+  },
+  "android": {
+    "modules": ["cc.musicme.offline.expo.OfflineExpoModule"]
+  }
+}

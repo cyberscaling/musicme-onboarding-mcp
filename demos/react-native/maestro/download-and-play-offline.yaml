@@ -1,0 +1,19 @@
+appId: cc.musicme.sasdemo.rn
+---
+- launchApp
+- tapOn: "Login as Demo"
+- waitForAnimationToEnd
+- tapOn: "Albums"
+- tapOn:
+    index: 0
+- tapOn:
+    id: "download-button-0"
+- assertVisible:
+    id: "download-done-0"
+    timeout: 60000
+- tapOn: "Downloads"
+- assertVisible:
+    index: 0
+- tapOn:
+    index: 0
+- assertVisible: "Playing"

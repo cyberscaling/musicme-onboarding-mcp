@@ -1,0 +1,11 @@
+appId: cc.musicme.sasdemo.rn
+---
+- launchApp
+- tapOn: "Downloads"
+- assertVisible:
+    index: 0
+- tapOn: "Logout"
+- assertVisible: "Login as Demo"
+- tapOn: "Login as Demo"
+- tapOn: "Downloads"
+- assertVisible: "No downloaded tracks yet."

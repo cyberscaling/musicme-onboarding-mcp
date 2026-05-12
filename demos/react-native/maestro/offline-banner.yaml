@@ -1,0 +1,25 @@
+appId: cc.musicme.sasdemo.rn
+---
+- launchApp
+- tapOn: "Login as Demo"
+- assertVisible: "Home"
+# Toggle airplane mode (requires `maestro test --device-screen-locked false`
+# OR a manual step on real device). Maestro can shell out to adb on Android;
+# on iOS simulator this step is documented but not automated.
+- runScript: |
+    if (maestro.platform === 'android') {
+      maestro.runShell('adb shell svc wifi disable && adb shell svc data disable')
+    } else {
+      console.log('iOS: toggle airplane mode manually within 5s')
+    }
+- waitForAnimationToEnd
+- assertVisible: "Offline — only downloaded tracks will play"
+- runScript: |
+    if (maestro.platform === 'android') {
+      maestro.runShell('adb shell svc wifi enable && adb shell svc data enable')
+    } else {
+      console.log('iOS: turn airplane mode off')
+    }
+- waitForAnimationToEnd:
+    timeout: 8000
+- assertNotVisible: "Offline — only downloaded tracks will play"
