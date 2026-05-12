@@ -1,10 +1,11 @@
 # musicme — jeu de prompts pour l'intégration
 
-Ce document propose **6 prompts** à exécuter dans l'ordre, dans Claude Code (ou
-Cursor / autre client agent), pour intégrer le streaming audio musicme dans un
-site existant. Chaque prompt est conçu pour une exécution **autonome** par
-l'agent, avec des questions à l'utilisateur **uniquement** quand l'audit ne
-peut pas conclure.
+Ce document propose **6 prompts de base** (intégration streaming standard) +
+**1 prompt avancé optionnel** (offline crypté, prefetch, playlist dynamique,
+JWT `sub_exp`) à exécuter dans l'ordre, dans Claude Code (ou Cursor / autre
+client agent), pour intégrer le streaming audio musicme dans un site existant.
+Chaque prompt est conçu pour une exécution **autonome** par l'agent, avec des
+questions à l'utilisateur **uniquement** quand l'audit ne peut pas conclure.
 
 > **Pré-requis** : la skill `musicme-integration` est installée
 > (voir `skill/musicme-integration/SKILL.md`). Elle définit le mode de
@@ -32,9 +33,14 @@ peut pas conclure.
 | 4 | **Planning** | Test cases concrets + ordre d'exécution | 2–5 min |
 | 5 | **Implémentation** | Code + tests verts à chaque étape | 30–120 min |
 | 6 | **Documentation finale** | Runbook + plan de tests à valider par l'humain | 5–10 min |
+| 7 (opt) | **Features avancées** | Prefetch, playlist dynamique, offline crypté, `sub_exp` | 1–8h selon scope |
 
-À la fin : intégration fonctionnelle, plan de tests à dérouler par l'humain
-pour valider en bout de chaîne, et documentation persistante.
+À la fin (phase 6) : intégration fonctionnelle, plan de tests à dérouler par
+l'humain pour valider en bout de chaîne, et documentation persistante.
+
+La phase 7 est **optionnelle** et peut être lancée beaucoup plus tard, quand
+le partenaire veut activer une feature avancée. Elle a son propre audit +
+specs + impl à l'intérieur du prompt.
 
 ---
 
@@ -353,6 +359,153 @@ fichiers livrés).
 
 ---
 
+## Prompt 7 (optionnel) — Features avancées
+
+À exécuter **après** la phase 6, quand l'intégration de base tourne en prod et
+que le partenaire veut activer une ou plusieurs features avancées :
+
+- **Prefetch** (`prefetchAlbum`, `prefetchSession`) — quick win latence
+- **Playlist dynamique** (`Playlist` SDK) — auto-advance + lookahead
+- **JWT `sub_exp`** — clamp TTL license offline sur date fin abo
+- **Offline encrypted** (iOS / Android / RN) — lecture sans réseau
+
+Référence canonique : `docs/advanced-integration.md` dans ce repo.
+
+```text
+/musicme-integration
+
+Phase 7: ADVANCED FEATURES.
+
+Sortie en mode caveman.
+
+Sous-phase 7.A — AUDIT AVANCÉ
+=============================
+
+Audite ce dépôt pour préparer l'activation d'une ou plusieurs features
+avancées musicme. Sortie identique à la phase 1 mais ciblée sur les
+prérequis spécifiques :
+
+1. Mobile : y a-t-il déjà une app mobile (RN / Swift / Kotlin) dans ce
+   monorepo, ou est-ce purement web ? (Web seul = offline pas applicable.)
+2. Player UX : l'app a-t-elle une notion de "queue / playlist" qui mérite
+   `Playlist` SDK, ou juste play one-shot ?
+3. Mint JWT : la route backend `/api/player-token` peut-elle lire la date
+   de fin d'abonnement de l'utilisateur (DB / SaaS billing / autre) ?
+4. UI réseau : y a-t-il un indicateur "offline" / "no connection" existant
+   à réutiliser, ou faut-il en créer un ?
+5. Catalogue : y a-t-il une notion de track "téléchargeable" vs "stream
+   only" (gestion droits / quotas) ?
+
+Sortie :
+
+## Audit avancé
+### Plateformes éligibles
+- offline iOS : OUI/NON (raison)
+- offline Android : OUI/NON
+- offline RN : OUI/NON
+- prefetch web : OUI (toujours, dès que SDK utilisé)
+- playlist dynamique web : OUI/NON (selon UX queue)
+- sub_exp JWT : OUI/NON (selon billing source)
+
+### Pré-requis manquants
+- liste
+
+Sous-phase 7.B — CHOIX
+=======================
+
+Demande à l'utilisateur (AskUserQuestion, max 4 questions) :
+- Quelles features parmi les éligibles veut-il activer maintenant ?
+- Si offline mobile retenu : iOS / Android / RN / les 3 ?
+- Si sub_exp retenu : où vient la date (column DB / Stripe webhook / autre) ?
+
+Sous-phase 7.C — SPECS
+=======================
+
+Génère un mini-plan dédié uniquement aux features sélectionnées.
+
+Pour CHAQUE feature retenue, expose une checklist d'activation. Référence :
+`docs/advanced-integration.md` §6 "Checklist d'activation par feature".
+
+### Prefetch
+| WI | Action | Fichier |
+|---|---|---|
+| ADV-PF-01 | Importer `prefetchAlbum` du SDK | <fichier page album> |
+| ADV-PF-02 | Câbler au mount avec `void prefetchAlbum(...).catch(() => {})` | idem |
+| ADV-PF-03 | (optionnel) Câbler `prefetchSession` sur `timeupdate` pour auto-advance | <fichier player> |
+
+### Playlist
+| WI | Action | Fichier |
+|---|---|---|
+| ADV-PL-01 | Importer `Playlist` du SDK | <fichier player wrapper> |
+| ADV-PL-02 | Instancier avec `audioElement` mémoisé | idem |
+| ADV-PL-03 | Câbler `onCurrentChange` à l'UI now-playing | idem |
+| ADV-PL-04 | Brancher mutations (`insert`/`move`/`remove`) à l'UI queue | idem |
+
+### sub_exp
+| WI | Action | Fichier |
+|---|---|---|
+| ADV-SE-01 | Lookup date fin abo dans la route mint | `/api/player-token` |
+| ADV-SE-02 | Ajouter `sub_exp` au payload signé | idem |
+| ADV-SE-03 | Côté client (si offline présent), gérer `SubscriptionExpiredError` | offline module |
+
+### Offline iOS
+| WI | Action | Fichier |
+|---|---|---|
+| ADV-OFF-iOS-01 | Vendor `modules/offline-core/` ou ajouter dépendance SPM | `Package.swift` consumer |
+| ADV-OFF-iOS-02 | Créer `OfflineService` avec deviceIdProvider Keychain | dans l'app |
+| ADV-OFF-iOS-03 | UI bouton download + appel `POST /offline/license` | écran track |
+| ADV-OFF-iOS-04 | AVPlayer wiring avec `OfflineSchemeHandler` | écran player |
+| ADV-OFF-iOS-05 | Auto-refresh foreground via `refreshExpiringLicenses` | app delegate |
+| ADV-OFF-iOS-06 | Logout → `wipeAll()` | logout flow |
+
+### Offline Android
+| WI | Action | Fichier |
+|---|---|---|
+| ADV-OFF-AND-01 | Vendor `modules/offline-core-android/` + référencer via `settings.gradle.kts` | settings.gradle.kts |
+| ADV-OFF-AND-02 | Dépendance `androidx.media3:media3-exoplayer:1.4.1+` | app/build.gradle |
+| ADV-OFF-AND-03 | Créer `OfflineService` avec `AndroidKeyStoreKeyVault` | dans l'app |
+| ADV-OFF-AND-04 | UI bouton download + appel `POST /offline/license` | écran track |
+| ADV-OFF-AND-05 | ExoPlayer + `OfflineAssetDataSource.Factory` | écran player |
+| ADV-OFF-AND-06 | Auto-refresh foreground + logout wipeAll | app onCreate / logout |
+
+### Offline RN
+| WI | Action | Fichier |
+|---|---|---|
+| ADV-OFF-RN-01 | Vendor `demos/react-native/modules/offline/` + ajouter dep `file:./modules/offline` | package.json |
+| ADV-OFF-RN-02 | `expo prebuild --clean` puis `expo run:ios` / `run:android` (autolink module natif) | shell |
+| ADV-OFF-RN-03 | UI `DownloadButton` réutilisé ou repensé | composant |
+| ADV-OFF-RN-04 | Routing `PersistentPlayer` : si `OfflineModule.hasTrack(id)` → `<OfflineNativePlayer>` sinon stream normal | composant player |
+| ADV-OFF-RN-05 | Auto-refresh via `refreshExpiringLicenses` au `AppState change=active` | `_layout.tsx` ou App.tsx |
+| ADV-OFF-RN-06 | Logout = `await OfflineModule.wipeAll()` (try/catch — module absent en Expo Go) | auth flow |
+| ADV-OFF-RN-07 | UI alerte `SubscriptionExpiredError` (Alert one-shot per session) | `_layout.tsx` |
+
+Sous-phase 7.D — IMPLÉMENTATION
+================================
+
+Implémente les WI sélectionnés dans l'ordre raisonnable. Tests à chaque WI :
+
+- Prefetch : DevTools Network → confirmer `/warmup-album` est appelé au mount,
+  puis `play→canplay` mesuré < 500ms (sinon retour mode classique).
+- Playlist : simuler 3 tracks, vérifier auto-advance + mutations live.
+- sub_exp : forcer `sub_exp = now - 1` dans le mint backend, confirmer 403
+  côté worker + `SubscriptionExpiredError` côté client.
+- Offline : `downloadTrack` + airplane mode + jouer la track + confirmer pas
+  de network call. Puis logout + relogin + downloads vides.
+
+Sous-phase 7.E — DOC
+====================
+
+Met à jour le runbook (`docs/musicme-runbook.md` créé en phase 6) :
+- nouvelles variables d'env (aucune pour prefetch/playlist, juste activation
+  côté code)
+- procédure tests offline manuels (cf checklist `docs/advanced-integration.md` §6)
+- procédure rotation TTL offline (env worker `OFFLINE_LICENSE_TTL_SECONDS`)
+
+Reste en mode caveman pour les commentaires d'avancement.
+```
+
+---
+
 ## Annexe — comment chaîner
 
 Le bon chaînage est:
@@ -374,6 +527,10 @@ Prompt 5 ─────► (impl + tests autonomes)
               │
               ▼
 Prompt 6 ─────► (docs + plan tests humain)
+              │
+              ▼  ─── intégration de base en prod ───
+              │
+Prompt 7 ─────► (features avancées, opt-in, audit+specs+impl en un seul prompt)
 ```
 
 Si tu utilises Claude Code: ouvre la session avec `/musicme-integration`

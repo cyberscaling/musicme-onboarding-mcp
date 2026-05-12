@@ -17,10 +17,11 @@ la techno de streaming audio musicme dans un site existant. La techno
 fournit un lecteur sécurisé qui joue de la musique chiffrée
 end-to-end, avec auth JWT côté backend.
 
-> Référence canonique : le guide d'intégration complet vit dans le repo
-> public musicme-onboarding-mcp : <https://github.com/cyberscaling/musicme-onboarding-mcp/blob/main/docs/integration-guide.md>.
-> Y renvoyer l'utilisateur quand un détail mérite une lecture
-> approfondie (signature JWT, MSE/Blob, troubleshooting CORS, etc.).
+> Références canoniques :
+> - **Intégration de base** : <https://github.com/cyberscaling/musicme-onboarding-mcp/blob/main/docs/integration-guide.md> (signature JWT, MSE/Blob, troubleshooting CORS, etc.)
+> - **Features avancées** : <https://github.com/cyberscaling/musicme-onboarding-mcp/blob/main/docs/advanced-integration.md> (offline crypté mobile, prefetch, playlist dynamique, JWT `sub_exp`)
+>
+> Y renvoyer l'utilisateur quand un détail mérite lecture approfondie.
 
 Cette skill s'active automatiquement quand l'utilisateur:
 - demande l'intégration musicme,
@@ -104,6 +105,11 @@ Tu dois connaître par cœur ces faits pour ne pas surcharger le contexte:
 | `/stream/<sid>` | GET | (session) | ciphertext AES-CTR |
 | `/key/<sid>` | GET | (session) | clé AES (32B) + IV (16B) |
 | `/heartbeat/<sid>` | POST | (session) | progression session |
+| `/warmup-album` | POST | `Authorization: Bearer <JWT>` | pré-chauffe cache album (prefetch) |
+| `/warmup-tracks` | POST | `Authorization: Bearer <JWT>` | pré-chauffe refs hétérogènes (playlist lookahead) |
+| `/offline/license` | POST | `Authorization: Bearer <JWT>` | mint license offline + ciphertextUrl |
+| `/offline/license-refresh` | POST | `Authorization: Bearer <JWT>` | renouveler license offline existante |
+| `/offline/blob/:trackId` | GET | URL signée (sig + exp + deviceId) | ciphertext téléchargeable, Range supporté |
 
 ### JWT minté
 
@@ -118,12 +124,20 @@ Tu dois connaître par cœur ces faits pour ne pas surcharger le contexte:
   "sub": "<user-id-fourni-par-le-partenaire>",
   "aud": "secure-audio-stream",
   "iat": ...,
-  "exp": ...
+  "exp": ...,
+  "sub_exp": ...
 }
 ```
 
 TTL par défaut 300s. Pas de session côté JWT — la session est créée par
 `/init-stream`.
+
+**Claim `sub_exp` (optionnel)** — date de fin d'abonnement utilisateur
+(unix seconds). Si présent, le worker clampe le TTL des licenses offline
+sur cette date (`exp = min(now + envTtl, sub_exp)`) et refuse 403
+`subscription_expired` si dépassé. Absent → fallback TTL fixe
+(rétro-compat). À fournir UNIQUEMENT si le partenaire utilise la feature
+offline et veut couper l'accès offline en cas de résiliation.
 
 ### SDK frontend
 
@@ -137,6 +151,29 @@ ta route backend `/api/player-token`.
 `mode: 'mse'` (recommandé) auto-résout au runtime entre `ManagedMediaSource`
 (iOS / macOS Safari 17.1+), `MediaSource` classique (autres browsers) et
 fallback `blob` (iOS <17.1). Aucun changement de code partenaire pour iOS.
+
+**Helpers prefetch** (exportés depuis le même package) :
+- `prefetchAlbum(workerUrl, token, cb)` — fire-and-forget au mount de la page album, divise la latence `play→canplay` par ~3-4.
+- `prefetchSession(workerUrl, token, ref)` — pour auto-advance gapless (call sur `timeupdate` quand `duration - currentTime < 5`).
+- `prefetchTracks(workerUrl, token, refs[])` — pour playlist hétérogène.
+
+**Playlist dynamique** : classe `Playlist({ workerUrl, getToken, audioElement, items, onCurrentChange })`. Compose `SecureAudioPlayer`, gère auto-advance + lookahead (session N+1/N+2 + KV N+5) + mutations live (`insert`, `move`, `remove`, `setItems`). Cf `docs/advanced-integration.md` §2.
+
+### Offline encrypted (mobile uniquement)
+
+Pour la lecture offline sans réseau, le partenaire intègre l'un des
+modules natifs vendorés dans `modules/` du présent repo :
+- `modules/offline-core/` — Swift Package (iOS 15+)
+- `modules/offline-core-android/` — Gradle library (Android API 24+)
+- `demos/react-native/modules/offline/` — Expo Module wrapper RN
+
+Flux : `POST /offline/license` → ciphertext download via URL signée →
+`OfflineModule.ingestDownload(...)` côté natif → lecture via `AVPlayer`
+(iOS) / `ExoPlayer` (Android) avec resource loader qui décrypte à la
+volée. TTL license par défaut 30 jours, clampé sur `sub_exp` JWT si
+présent. Cf `docs/advanced-integration.md` §4.
+
+**Web : pas supporté.** On ne protège pas une clé symétrique en JS browser.
 
 ### Origines acceptées
 
@@ -198,6 +235,18 @@ l'utilisateur voit pour que ce soit grep-able.
 | Erreur CORS sur `/init-stream` | origine pas dans `allowed_origins` | call `update_allowed_origins(partner_id, [...nouvelle liste...])` via MCP |
 | MSE `SourceBuffer error code=4` | MP4 non fragmenté | mode `mse` du SDK fragmente au vol via mp4box.js; sinon `mode: 'blob'` |
 | `<audio>.duration === NaN` | l'audio n'a pas commencé à charger | attendre `onLoaded` callback du SDK avant de lire `duration` |
+
+### Features avancées
+| Symptôme | Cause | Fix |
+|---|---|---|
+| `prefetchAlbum` fail silencieux | endpoint absent côté worker | vérifier que le partenaire pointe sur stream worker récent ; sinon le helper `.catch()` non-fatal masque l'erreur, vérifier le network tab |
+| `Playlist` ne fait pas auto-advance | `audioElement` recréé à chaque render | mémoiser l'élément (`useRef` ou `useMemo`), instancier `Playlist` une fois |
+| RN `Cannot find native module 'OfflineExpoModule'` | binaire app construit avant l'autolinking du module | re-run `expo prebuild` puis `expo run:ios` / `run:android` |
+| Offline 403 `subscription_expired` au mint | JWT `sub_exp <= now` | renouveler abonnement utilisateur côté backend partenaire ; le worker refuse avant tout I/O |
+| Offline `SubscriptionExpiredError` levée côté JS | même cause que ci-dessus | UI partenaire doit montrer "Renouvelle ton abonnement" + arrêter d'appeler `refreshExpiringLicenses` |
+| Offline iOS `kCFErrorDomainCFNetwork -1100` | URL `offline://...` mal interprétée par AVPlayer | s'assurer que le `AVAssetResourceLoaderDelegate` est attaché AVANT `play()` |
+| Offline Android `Source error` ExoPlayer | DataSource pas enregistré | passer `OfflineAssetDataSource.Factory(service)` au `ProgressiveMediaSource.Factory(...)` |
+| Logout laisse des downloads | `OfflineModule.wipeAll()` jamais appelé | wire dans le flow logout (best-effort, swallow erreur si module natif absent en Expo Go) |
 
 ### Phase 6 (docs)
 | Symptôme | Cause | Fix |
