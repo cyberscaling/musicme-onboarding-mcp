@@ -1,8 +1,9 @@
 /**
- * Full-screen player view. Renders timeline + logs + metrics. The WebView that
- * actually decrypts and plays audio lives in <PersistentPlayer /> at the root
- * layout — this screen is purely UI consuming the shared store, so swipe-down
- * dismissing the modal does NOT tear down playback.
+ * Full-screen player view. Renders timeline + logs + metrics. The native
+ * player engine that actually decrypts and plays audio lives in
+ * <PersistentPlayer /> at the root layout — this screen is purely UI
+ * consuming the shared store, so swipe-down dismissing the modal does NOT
+ * tear down playback.
  */
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
@@ -113,66 +114,34 @@ export default function PlayerScreen() {
       {p.metrics ? (
         <View style={styles.metricsBox}>
           <Text style={styles.metricsTitle}>
-            phases (ms) · mode={p.metrics.mode} · {p.metrics.file_size_bytes} bytes
+            metrics · outcome={p.metrics.outcome}
+            {p.metrics.fileSizeBytes != null ? ` · ${p.metrics.fileSizeBytes} bytes` : ''}
           </Text>
           {(
             [
-              'get_token',
-              'init_session',
-              'fetch_key',
-              'mse_setup',
-              'first_chunk_fetch',
-              'first_decrypt',
-              'mp4box_ready',
-              'first_append_to_canplay',
-              'total',
+              ['bootstrapMs', 'bootstrap'],
+              ['firstKeyMs', 'first_key'],
+              ['firstRangeMs', 'first_range'],
+              ['firstCanplayMs', 'first_canplay'],
+              ['totalPlayMs', 'total_play'],
             ] as const
-          ).map((k) => (
-            <View key={k} style={styles.metricsRow}>
-              <Text style={styles.metricsKey}>{k}</Text>
-              <Text style={styles.metricsValue}>{p.metrics ? p.metrics.phases_ms[k].toFixed(1) : '—'}</Text>
-            </View>
-          ))}
-          <Text style={[styles.metricsTitle, { marginTop: 8 }]}>server total (ms)</Text>
-          <View style={styles.metricsRow}>
-            <Text style={styles.metricsKey}>init_session</Text>
-            <Text style={styles.metricsValue}>{p.metrics.server_ms.init_session.toFixed(1)}</Text>
-          </View>
-          <View style={styles.metricsRow}>
-            <Text style={styles.metricsKey}>fetch_key</Text>
-            <Text style={styles.metricsValue}>{p.metrics.server_ms.fetch_key.toFixed(1)}</Text>
-          </View>
-        </View>
-      ) : null}
-
-      {p.serverTimings.length > 0 ? (
-        <View style={styles.metricsBox}>
-          {p.serverTimings.map((t) => {
-            const entries = Object.entries(t.phases).filter(([k]) => k !== 'app')
-            const total = t.phases.total ?? t.phases.app ?? 0
-            const descEntries = Object.entries(t.desc ?? {})
+          ).map(([k, label]) => {
+            const v = p.metrics ? p.metrics[k] : null
             return (
-              <View key={t.endpoint} style={{ marginBottom: 6 }}>
-                <Text style={styles.metricsTitle}>
-                  server[{t.endpoint}] phases (ms) · total={total.toFixed(1)}
-                </Text>
-                {entries
-                  .filter(([k]) => k !== 'total')
-                  .map(([k, v]) => (
-                    <View key={k} style={styles.metricsRow}>
-                      <Text style={styles.metricsKey}>{k}</Text>
-                      <Text style={styles.metricsValue}>{v.toFixed(1)}</Text>
-                    </View>
-                  ))}
-                {descEntries.map(([k, v]) => (
-                  <View key={`desc-${k}`} style={styles.metricsRow}>
-                    <Text style={styles.metricsKey}>{k}</Text>
-                    <Text style={styles.metricsValue}>{v}</Text>
-                  </View>
-                ))}
+              <View key={k} style={styles.metricsRow}>
+                <Text style={styles.metricsKey}>{label}</Text>
+                <Text style={styles.metricsValue}>{v != null ? v.toFixed(1) : '—'}</Text>
               </View>
             )
           })}
+          <View style={styles.metricsRow}>
+            <Text style={styles.metricsKey}>underruns</Text>
+            <Text style={styles.metricsValue}>{p.metrics.bufferUnderruns}</Text>
+          </View>
+          <View style={styles.metricsRow}>
+            <Text style={styles.metricsKey}>session_rotations</Text>
+            <Text style={styles.metricsValue}>{p.metrics.sessionRotations}</Text>
+          </View>
         </View>
       ) : null}
 

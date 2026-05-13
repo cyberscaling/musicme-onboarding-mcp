@@ -1,233 +1,92 @@
 /**
- * Always-mounted player host. Two playback backends:
- *   1. The hidden 1×1 WebView (streaming via the SDK) — default path.
- *   2. `<OfflineNativePlayer />` — used when the current track is in the
- *      offline catalog (downloaded via @demos/offline).
- *
- * The WebView itself lives off-screen (1×1px) so audio playback continues
- * regardless of navigation state. The visible mini-bar lives in this same
- * component but is conditionally rendered based on `track` + route segment
- * (hidden on the /player modal). This decoupling is what lets "swipe-down on
- * the player" dismiss the modal without tearing down the audio pipeline.
+ * Always-mounted player host. All playback (streaming + offline) goes through
+ * a single hidden 1×1 <NativePlayer />. The view stays mounted across
+ * navigation so audio continues uninterrupted.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useRef } from 'react'
+import { StyleSheet, Text, View, Pressable, Platform } from 'react-native'
 import { router, useSegments } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import WebView, { type WebViewMessageEvent } from 'react-native-webview'
-import { OfflineModule, OfflineNativePlayer } from '@demos/offline'
+import { NativePlayer, OfflineModule, Player } from '@demos/offline'
 import { Cover } from '@/components/Cover'
-import { PLAYER_HTML } from '@/lib/playerHtml'
-import { usePlayer, type PlayerEvent } from '@/lib/playerStore'
+import { usePlayer } from '@/lib/playerStore'
+import { coverUrl as buildCoverUrl } from '@/lib/covers'
 
 export function PersistentPlayer() {
   const player = usePlayer()
-  const segments = useSegments()
-  const webRef = useRef<WebView>(null)
-  const readyRef = useRef(false)
-  const pendingCmds = useRef<string[]>([])
 
-  // Offline routing: when the current track is in the offline catalog, render
-  // the native AVPlayer/ExoPlayer view instead of the WebView.
-  const [offlineTrackId, setOfflineTrackId] = useState<string | null>(null)
-  const offlineDurationRef = useRef(0)
-  // Track which trackId the offline-resolution effect has finished checking.
-  // Between a track change and that effect completing, the offline status is
-  // unknown — we must not forward play/playlist commands to the WebView during
-  // that window, otherwise an online stream is kicked off for a track that's
-  // about to play offline.
-  const offlineResolvedForRef = useRef<string | null>(null)
-  const bufferedWebCmds = useRef<object[]>([])
-  // Prop-driven control of the native offline player. requireNativeViewManager
-  // doesn't dispatch AsyncFunction view methods through the ref, so we drive
-  // play/pause/seek via props instead.
-  const [offlinePlaying, setOfflinePlaying] = useState(true)
-  const [offlineSeekToMs, setOfflineSeekToMs] = useState<number | null>(null)
-
-  // Hide mini-bar when the /player modal is on top.
-  const onPlayerScreen = segments.some((s) => s === 'player')
-  const showMiniBar = !!player.track && !onPlayerScreen
-  const first = (segments[0] ?? '') as string
-  const tabBarVisible = first !== 'login' && first !== 'index' && first !== ''
-  const insets = useSafeAreaInsets()
-  // iOS bottom tab bar visual height ≈ 49 + safe-area inset (home indicator).
-  const TAB_BAR_HEIGHT = 49 + insets.bottom
-
-  const sendToWebView = useCallback((payload: object) => {
-    const json = JSON.stringify(payload)
-    if (readyRef.current && webRef.current) {
-      webRef.current.postMessage(json)
-    } else {
-      pendingCmds.current.push(json)
-    }
-  }, [])
-
-  // Resolve offline-routing when track changes.
-  const currentTrackId = player.track
-    ? `${player.track.cb}:${player.track.disc}:${player.track.track}`
-    : null
-  useEffect(() => {
-    let cancelled = false
-    if (!currentTrackId) {
-      setOfflineTrackId(null)
-      offlineDurationRef.current = 0
-      offlineResolvedForRef.current = null
-      bufferedWebCmds.current = []
-      return
-    }
-    // Mark resolution pending for this trackId — drains in the .then below.
-    offlineResolvedForRef.current = null
-    void (async () => {
-      try {
-        const tracks = await OfflineModule.listTracks()
-        if (cancelled) return
-        const entry = tracks.find((t) => t.trackId === currentTrackId)
-        if (entry) {
-          offlineDurationRef.current = entry.meta.duration ?? 0
-          // Reset transport state for the new offline track. autoPlay handles
-          // the initial start; `playing` must be true so a subsequent pause→play
-          // transition is detected by the native Prop observer.
-          setOfflinePlaying(true)
-          setOfflineSeekToMs(null)
-          setOfflineTrackId(currentTrackId)
-          // Track is offline — discard buffered WebView commands.
-          bufferedWebCmds.current = []
-        } else {
-          offlineDurationRef.current = 0
-          setOfflineTrackId(null)
-          // Track is online — flush buffered commands to the WebView.
-          const buf = bufferedWebCmds.current
-          bufferedWebCmds.current = []
-          for (const cmd of buf) sendToWebView(cmd)
-        }
-        offlineResolvedForRef.current = currentTrackId
-      } catch {
-        if (!cancelled) {
-          offlineDurationRef.current = 0
-          setOfflineTrackId(null)
-          // Resolution failed — fall back to WebView (online) path.
-          const buf = bufferedWebCmds.current
-          bufferedWebCmds.current = []
-          for (const cmd of buf) sendToWebView(cmd)
-          offlineResolvedForRef.current = currentTrackId
-        }
-      }
-    })()
-    return () => { cancelled = true }
-  }, [currentTrackId, sendToWebView])
-
-  // Subscribe to commands from the store. Route to native player when offline,
-  // otherwise to the WebView. For the offline backend we drive the native view
-  // through declarative props (`playing`, `seekToMs`) because
-  // requireNativeViewManager does not dispatch AsyncFunction view methods on
-  // the JS ref — imperative ref calls silently no-op.
-  useEffect(() => {
-    return player.subscribeCommand((cmd) => {
-      if (offlineTrackId) {
-        if (cmd.type === 'play') setOfflinePlaying(true)
-        else if (cmd.type === 'pause') setOfflinePlaying(false)
-        else if (cmd.type === 'seek') setOfflineSeekToMs(cmd.t * 1000)
-        return
-      }
-      // If the offline-resolution effect hasn't completed for the current
-      // trackId yet, buffer the command instead of forwarding it to the
-      // WebView. The effect flushes the buffer once status is known (or
-      // discards it if the track is offline). This closes the race where a
-      // synchronous dispatch from playSingle() reached the WebView before
-      // hasTrack() resolved.
-      if (currentTrackId && offlineResolvedForRef.current !== currentTrackId) {
-        bufferedWebCmds.current.push(cmd)
-        return
-      }
-      sendToWebView(cmd)
-    })
-  }, [player.subscribeCommand, sendToWebView, offlineTrackId, currentTrackId])
-
-  // Reset `seekToMs` back to null after dispatching so the same target can be
-  // re-applied later (Prop only fires on value change).
-  useEffect(() => {
-    if (offlineSeekToMs != null) {
-      const id = setTimeout(() => setOfflineSeekToMs(null), 100)
-      return () => clearTimeout(id)
-    }
-  }, [offlineSeekToMs])
-
-  const handleMessage = useCallback(
-    (e: WebViewMessageEvent) => {
-      let event: PlayerEvent
-      try {
-        event = JSON.parse(e.nativeEvent.data) as PlayerEvent
-      } catch {
-        return
-      }
-      if (event.type === 'ready') {
-        readyRef.current = true
-        for (const q of pendingCmds.current) webRef.current?.postMessage(q)
-        pendingCmds.current = []
-        return
-      }
-      player.applyPlayerEvent(event)
-    },
-    [player.applyPlayerEvent],
-  )
+  const prefetchedFor = useRef<string | null>(null)
+  const PREFETCH_LEAD_S = 5
 
   const track = player.track
 
+  useEffect(() => { prefetchedFor.current = null }, [track?.cb, track?.disc, track?.track])
+
+  const onTimeUpdate = (e: { nativeEvent: { position: number; duration: number } }) => {
+    const positionS = e.nativeEvent.position / 1000
+    const durationS = e.nativeEvent.duration / 1000
+    player.applyPlayerEvent({ type: 'time', current: positionS, duration: durationS })
+    if (durationS > 0 && positionS >= durationS - PREFETCH_LEAD_S) {
+      const np = player.nowPlaying
+      const idx = player.currentIndex
+      if (idx >= 0 && idx + 1 < np.length) {
+        const next = np[idx + 1]!
+        const id = `${next.ref.cb}:${next.ref.disc}:${next.ref.track}`
+        if (prefetchedFor.current !== id) {
+          prefetchedFor.current = id
+          void Player.prefetch(next.ref)
+        }
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return
+    const m = OfflineModule as unknown as {
+      addListener?: (name: string, cb: () => void) => { remove: () => void }
+    }
+    const subN = m.addListener?.('player:remote:next', () => player.next())
+    const subP = m.addListener?.('player:remote:prev', () => player.prev())
+    return () => { subN?.remove?.(); subP?.remove?.() }
+  }, [player])
+
+  const segments = useSegments()
+  const insets = useSafeAreaInsets()
+  const onPlayerScreen = segments.some((s) => s === 'player')
+  const first = (segments[0] ?? '') as string
+  const tabBarVisible = first !== 'login' && first !== 'index' && first !== ''
+  const TAB_BAR_HEIGHT = 49 + insets.bottom
+
+  const showMiniBar = !!track && !onPlayerScreen
+
   return (
     <>
-      {/* Hidden WebView — mounted while a track is active and not offline.
-          1×1 + opacity:0 to keep it active without occupying layout.
-          WKWebView keeps JS + audio running in this state. */}
-      {track && !offlineTrackId ? (
-        <View
-          pointerEvents="none"
-          style={styles.hiddenContainer}
-          // keep mounted across screen changes
-        >
-          <WebView
-            ref={webRef}
-            originWhitelist={['*']}
-            source={{ html: PLAYER_HTML, baseUrl: 'https://localhost/' }}
-            onMessage={handleMessage}
-            javaScriptEnabled
-            domStorageEnabled
-            mediaPlaybackRequiresUserAction={false}
-            allowsInlineMediaPlayback
-            mixedContentMode="always"
-            style={styles.hiddenWeb}
-          />
-        </View>
-      ) : null}
-
-      {/* Hidden OfflineNativePlayer — same 1×1 + opacity:0 trick. */}
-      {track && offlineTrackId ? (
-        <View pointerEvents="none" style={styles.hiddenContainer}>
-          <OfflineNativePlayer
-            trackId={offlineTrackId}
+      {track ? (
+        <View pointerEvents="none" style={styles.hidden}>
+          <NativePlayer
+            trackRef={{ cb: track.cb, disc: track.disc, track: track.track }}
+            title={track.title}
+            artist={track.artist}
+            coverUrl={buildCoverUrl(track.cb, 295)}
             autoPlay
-            playing={offlinePlaying}
-            seekToMs={offlineSeekToMs}
-            style={styles.hiddenNative}
-            onReady={() => {
-              // Use the stored meta duration when available.
-              const dur = offlineDurationRef.current
+            playing={player.playing}
+            seekToMs={player.seekToMs}
+            style={styles.hiddenView}
+            onReady={(e) => {
+              const durMs = e.nativeEvent.duration
               player.applyPlayerEvent({ type: 'state', state: 'canplay' })
-              if (dur > 0) {
-                player.applyPlayerEvent({ type: 'time', current: 0, duration: dur })
+              if (durMs > 0) {
+                player.applyPlayerEvent({ type: 'time', current: 0, duration: durMs / 1000 })
               }
             }}
             onPlay={() => player.applyPlayerEvent({ type: 'playback', playing: true })}
             onPause={() => player.applyPlayerEvent({ type: 'playback', playing: false })}
-            onTimeUpdate={(e) => {
-              const positionMs = e.nativeEvent.position
-              player.applyPlayerEvent({
-                type: 'time',
-                current: positionMs / 1000,
-                duration: offlineDurationRef.current,
-              })
-            }}
+            onTimeUpdate={onTimeUpdate}
             onEnded={() => player.applyPlayerEvent({ type: 'state', state: 'ended' })}
             onError={(e) => player.applyPlayerEvent({ type: 'error', message: e.nativeEvent.message })}
+            onStalled={() => player.applyPlayerEvent({ type: 'log', level: 'err', message: 'stalled' })}
+            onSessionRotated={() => player.applyPlayerEvent({ type: 'log', level: 'info', message: 'session_rotated' })}
+            onMetrics={(e) => player.applyPlayerEvent({ type: 'metrics', report: e.nativeEvent })}
           />
         </View>
       ) : null}
@@ -252,17 +111,10 @@ export function PersistentPlayer() {
 }
 
 function MiniBar(props: {
-  cb: number
-  title: string
-  artist: string | null
-  playing: boolean
-  progress: number
-  onTap: () => void
-  onToggle: () => void
-  onPrev: () => void
-  onNext: () => void
-  bottomOffset: number
-  extraBottomPadding: number
+  cb: number; title: string; artist: string | null; playing: boolean
+  progress: number; onTap: () => void; onToggle: () => void
+  onPrev: () => void; onNext: () => void
+  bottomOffset: number; extraBottomPadding: number
 }) {
   return (
     <Pressable
@@ -281,41 +133,19 @@ function MiniBar(props: {
             <Text numberOfLines={1} style={styles.miniArtist}>{props.artist}</Text>
           ) : null}
         </View>
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation()
-            router.push('/queue')
-          }}
-          style={styles.miniBtn}
-          accessibilityLabel="open queue"
-          hitSlop={6}
-        >
+        <Pressable onPress={(e) => { e.stopPropagation(); router.push('/queue') }}
+          style={styles.miniBtn} accessibilityLabel="open queue" hitSlop={6}>
           <Text style={styles.miniBtnIcon}>≡</Text>
         </Pressable>
       </View>
       <View style={styles.miniCtrlRow}>
-        <Pressable
-          onPress={(e) => { e.stopPropagation(); props.onPrev() }}
-          style={styles.miniCtrlBtn}
-          accessibilityLabel="prev"
-          hitSlop={6}
-        >
+        <Pressable onPress={(e) => { e.stopPropagation(); props.onPrev() }} style={styles.miniCtrlBtn} accessibilityLabel="prev" hitSlop={6}>
           <Text style={styles.miniCtrlIcon}>‹‹</Text>
         </Pressable>
-        <Pressable
-          onPress={(e) => { e.stopPropagation(); props.onToggle() }}
-          style={[styles.miniCtrlBtn, styles.miniCtrlPrimary]}
-          accessibilityLabel={props.playing ? 'pause' : 'play'}
-          hitSlop={6}
-        >
+        <Pressable onPress={(e) => { e.stopPropagation(); props.onToggle() }} style={[styles.miniCtrlBtn, styles.miniCtrlPrimary]} accessibilityLabel={props.playing ? 'pause' : 'play'} hitSlop={6}>
           <Text style={[styles.miniCtrlIcon, styles.miniCtrlPrimaryIcon]}>{props.playing ? '❚❚' : '▶'}</Text>
         </Pressable>
-        <Pressable
-          onPress={(e) => { e.stopPropagation(); props.onNext() }}
-          style={styles.miniCtrlBtn}
-          accessibilityLabel="next"
-          hitSlop={6}
-        >
+        <Pressable onPress={(e) => { e.stopPropagation(); props.onNext() }} style={styles.miniCtrlBtn} accessibilityLabel="next" hitSlop={6}>
           <Text style={styles.miniCtrlIcon}>››</Text>
         </Pressable>
       </View>
@@ -324,23 +154,9 @@ function MiniBar(props: {
 }
 
 const styles = StyleSheet.create({
-  hiddenContainer: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    opacity: 0,
-    overflow: 'hidden',
-  },
-  hiddenWeb: { width: 1, height: 1, backgroundColor: 'transparent' },
-  hiddenNative: { width: 1, height: 1, backgroundColor: 'transparent' },
-  miniBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: '#101010',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#2a2a2a',
-  },
+  hidden: { position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' },
+  hiddenView: { width: 1, height: 1, backgroundColor: 'transparent' },
+  miniBar: { position: 'absolute', left: 0, right: 0, backgroundColor: '#101010', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2a2a2a' },
   miniProgressTrack: { height: 2, backgroundColor: '#222' },
   miniProgressBar: { height: 2, backgroundColor: '#4caf50' },
   miniInfoRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, gap: 12 },

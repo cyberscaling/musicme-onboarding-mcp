@@ -1,5 +1,4 @@
-# Guide d'intégration partenaire — musicme
-
+# Guide d'intégration partenaire
 
 Ce document s'adresse à un développeur qui veut **streamer la musique de notre catalogue depuis son propre site web** (lecteur audio sur sa page, paiement et logique métier de son côté). Il est volontairement progressif : la section *Vue d'ensemble* est compréhensible sans bagage cryptographique, puis on descend dans les détails techniques pour l'implémentation.
 
@@ -9,7 +8,7 @@ Ce document s'adresse à un développeur qui veut **streamer la musique de notre
 
 ## 0. TL;DR
 
-1. l'opérateur musicme te transmet une **clé d'onboarding** (`ONBOARDING_API_KEY`). Tu installes notre **MCP server** dans ton éditeur (Claude Code, Cursor, Claude Desktop) avec cette clé en variable d'environnement, puis tu demandes à l'agent : *« registre un nouveau partenaire `mon-site` avec origin `https://www.mon-site.fr` »*. L'agent appelle l'API d'onboarding et te renvoie une **clé de mint** (`MINT_KEY`) à stocker **immédiatement** dans ton gestionnaire de secrets — elle ne s'affichera jamais plus.
+1. L'opérateur musicme te transmet une **clé d'onboarding** (`ONBOARDING_API_KEY`). Tu installes notre **MCP server** dans ton éditeur (Claude Code, Cursor, Claude Desktop) avec cette clé en variable d'environnement, puis tu demandes à l'agent : *« registre un nouveau partenaire `mon-site` avec origin `https://www.mon-site.fr` »*. L'agent appelle l'API d'onboarding et te renvoie une **clé de mint** (`MINT_KEY`) à stocker **immédiatement** dans ton gestionnaire de secrets — elle ne s'affichera jamais plus.
 2. Côté **ton backend** (Node, PHP, Python, peu importe), tu fais un appel HTTP à notre serveur `admin-stream.musicme.cc` pour échanger la `MINT_KEY` contre un **JWT** (jeton court, 5 minutes de durée de vie).
 3. Côté **ton frontend** (la page web où le lecteur tourne), tu prends ce JWT et tu l'envoies au serveur de streaming `stream.musicme.cc` qui te retourne un identifiant de session + une URL de stream + une URL de clé.
 4. Ton lecteur **télécharge l'audio chiffré** depuis l'URL de stream, **récupère la clé** depuis l'URL de clé, **déchiffre** au vol et joue. Tu n'as pas à écrire la partie crypto : on fournit un SDK JavaScript prêt à l'emploi.
@@ -149,11 +148,11 @@ Trois propriétés importantes :
 
 ## 5. Étape A — Création du partenaire
 
-Tu disposes de deux chemins. Le premier (5.1) est recommandé : tu fais l'opération toi-même depuis ton éditeur en quelques minutes. Le second (5.2) reste disponible si l'opérateur musicme préfère faire la création à ta place.
+Tu disposes de deux chemins. Le premier (5.1) est recommandé : tu fais l'opération toi-même depuis ton éditeur en quelques minutes. Le second (5.2) reste disponible si tu préfères la création manuelle.
 
 ### 5.1 Self-service via le MCP (recommandé)
 
-l'opérateur musicme te transmet **une seule chose** : la valeur d'une `ONBOARDING_API_KEY` (chaîne hex de 64 caractères). C'est cette clé qui te donne le droit de créer ta propre entrée partenaire.
+L'opérateur musicme te transmet **une seule chose** : la valeur d'une `ONBOARDING_API_KEY` (chaîne hex de 64 caractères). C'est cette clé qui te donne le droit de créer ta propre entrée partenaire.
 
 **Installation du MCP**
 
@@ -177,7 +176,7 @@ Ajoute le bloc suivant à la config MCP de ton éditeur :
       ],
       "env": {
         "MUSICME_ADMIN_URL": "https://admin-stream.musicme.cc",
-        "MUSICME_ONBOARDING_API_KEY": "<la valeur transmise par l'opérateur musicme>"
+        "MUSICME_ONBOARDING_API_KEY": "<YOUR_ONBOARDING_API_KEY>"
       }
     }
   }
@@ -224,7 +223,7 @@ Réponse :
 }
 ```
 
-⚠️ **Le champ `mint_key` n'apparaîtra plus jamais.** Avant que tu fasses la moindre autre chose, copie-le dans ton gestionnaire de secrets (1Password, Vault, AWS Secrets Manager, GCP Secret Manager, etc.) sous le label `MUSICME_MINT_KEY`. Si tu le perds, il faut révoquer + en re-mint un autre côté l'opérateur musicme.
+⚠️ **Le champ `mint_key` n'apparaîtra plus jamais.** Avant que tu fasses la moindre autre chose, copie-le dans ton gestionnaire de secrets (1Password, Vault, AWS Secrets Manager, GCP Secret Manager, etc.) sous le label `MUSICME_MINT_KEY`. Si tu le perds, il faut révoquer + en re-mint un autre côté opérateur musicme.
 
 **Vérification**
 
@@ -264,7 +263,7 @@ cp -R /tmp/musicme-mcp/skill/musicme-integration .claude/skills/
 
 Puis dans Claude Code : `/musicme-integration` pour activer la skill, et coller le prompt 1 (audit) du fichier `integration-prompts.md`.
 
-### 5.2 Création manuelle par l'opérateur musicme (fallback)
+### 5.2 Création manuelle par l'opérateur (fallback)
 
 Si pour une raison ou une autre tu n'utilises pas le MCP, l'opérateur musicme peut faire la création depuis l'admin UI. Sur `https://admin-stream.musicme.cc`, l'admin :
 
@@ -660,11 +659,15 @@ Cas le plus simple — couvert en §6.3 — **rien à faire de spécial**. Le SD
 
 #### 6.5.2 React Native (iOS + Android)
 
-Notre SDK ne tourne **pas** dans le runtime JS de React Native (pas de DOM, pas de `MediaSource`). Deux chemins :
+Notre SDK (`@cyberscaling/secure-audio-stream-client`) ne tourne **pas** dans le runtime JS de React Native (pas de DOM, pas de `MediaSource`). Deux chemins :
 
-**A. WebView (recommandé)**
+---
 
-Héberge la page web qui utilise le SDK dans un `react-native-webview`. L'engine WebKit d'iOS fournit `ManagedMediaSource` à partir d'iOS 17.1, donc tu obtiens le streaming progressif sans écrire une ligne de code natif.
+**Pattern A — WebView (legacy, plus simple)**
+
+Héberge la page web qui utilise le SDK dans un `react-native-webview`. L'engine WebKit d'iOS fournit `ManagedMediaSource` à partir d'iOS 17.1, donc tu obtiens le streaming progressif sans écrire une ligne de code natif. Sur Android, le WebView Chromium supporte `MediaSource` — mode `mse` standard.
+
+**A.1 Pattern minimal** — webapp hébergée en distant :
 
 ```tsx
 import { WebView } from 'react-native-webview'
@@ -676,127 +679,164 @@ import { WebView } from 'react-native-webview'
 />
 ```
 
-Côté webapp partenaire, la page hébergée dans la WebView doit avoir l'origine déclarée dans `partners.allowed_origins`. Sur Android, le WebView Chromium supporte aussi `MediaSource` — tu obtiens le mode `mse` standard.
+Côté webapp partenaire, la page hébergée doit avoir l'origine déclarée dans `partners.allowed_origins`.
 
-Limites :
-- L'UI est celle de ta page web. Si tu veux contrôler le `<audio>` via du natif (lock screen iOS, contrôles AirPods, etc.), il te faut le chemin B.
-- Les WebView iOS ne diffusent pas le son en background sans config spécifique du `AVAudioSession` côté natif.
+**A.2 Pattern bridge bidirectionnel** — UI native + SDK confiné WebView :
 
-**B. Player natif + bridge custom (chemin lourd)**
+Si tu veux le confort d'une UI 100% React Native (FlatList, Pressable, navigation Expo Router, drag-drop natif…) tout en gardant le SDK dans la WebView, monte une WebView **invisible** (`1×1px`, opacity:0) en permanence au root layout et bridge tout par message-passing :
 
-Utilise `react-native-track-player` ou `expo-av` avec un module natif qui ré-implémente le flow `init-stream → key → /stream` + déchiffrement AES-CTR. Tu écris l'équivalent du SDK en Swift (iOS) et Kotlin (Android). À considérer **uniquement** si tu as besoin :
+```tsx
+// app/_layout.tsx — WebView toujours montée tant qu'un track est défini
+<WebView
+  ref={webRef}
+  source={{ html: PLAYER_HTML, baseUrl: 'https://ton-domaine.fr/' }}
+  onMessage={(e) => applyPlayerEvent(JSON.parse(e.nativeEvent.data))}
+  style={{ width: 1, height: 1, opacity: 0, position: 'absolute' }}
+  javaScriptEnabled
+  domStorageEnabled
+  mediaPlaybackRequiresUserAction={false}
+  allowsInlineMediaPlayback
+/>
+```
 
-- de contrôles de lecture natifs (CarPlay, Now Playing, AirPods),
-- de lecture en arrière-plan robuste,
-- d'une UX qui dépasse ce que le WebView permet.
+**Limites du Pattern A** :
+- Background audio iOS : `AVAudioSession` côté natif requis (`UIBackgroundModes=audio`).
+- Lock screen / Now Playing / AirPods controls : nécessitent un bridge natif custom vers `MPNowPlayingInfoCenter` (iOS) / `MediaSession` (Android).
+- Android : le processus Chromium sandboxé peut être évincé par l'OOM killer → lecture interrompue sans erreur propagée à RN.
+- Pas de gapless prefetch.
 
-Le code Swift / Kotlin nécessaire est décrit dans 6.5.3 et 6.5.4 ; tu l'exposeras à JS via `NativeModules` ou un native module Expo.
+---
+
+**Pattern B — Module natif `@demos/offline` (recommandé)**
+
+C'est le chemin utilisé par l'app de démo de référence `demos/react-native/`. Il remplace la WebView cachée par un player Expo Module natif (AVPlayer iOS, ExoPlayer Android) qui :
+
+- Bootstrap une `StreamSession` via `POST /init-stream` (retourne `{sessionId, fileSize, key, iv, contentType}` directement, pas de `/key` séparé),
+- Déchiffre AES-CTR à la volée range par range via `SasPlayerResourceLoader` (iOS) / `SasPlayerDataSource` (Android),
+- Envoie les heartbeats automatiquement,
+- Intègre lock-screen Now Playing (iOS) + MediaSession + foreground service (Android) out-of-the-box,
+- Supporte le gapless prefetch via `Player.prefetch(ref)`.
+
+**Install :**
+
+Vendor depuis le repo MCP (ou clone du repo source) :
+- `modules/offline-core/` → Swift Package (iOS 15+)
+- `modules/offline-core-android/` → Gradle library (Android 24+)
+- `demos/react-native/modules/offline/` → Expo Module wrapper JS
+
+```json
+// package.json
+{
+  "dependencies": {
+    "@demos/offline": "file:./modules/offline",
+    "@react-native-community/netinfo": "^12.0.0",
+    "expo-file-system": "^55.0.0"
+  }
+}
+```
+
+```gradle
+// android/settings.gradle
+include ':offline-core-android'
+project(':offline-core-android').projectDir = new File(rootProject.projectDir, '../../../modules/offline-core-android')
+```
+
+Puis `expo prebuild` + `expo run:ios` / `run:android` pour autolink le module.
+
+**Setup au démarrage de l'app :**
+
+```typescript
+import { Player } from '@demos/offline'
+
+// Dans _layout.tsx ou App.tsx — une seule fois.
+Player.configure({
+  baseUrl: 'https://stream.musicme.cc',
+  tokenProvider: async () => {
+    const { token } = await fetch('/api/player-token', { method: 'POST', credentials: 'include' }).then(r => r.json())
+    return token
+  },
+})
+```
+
+Le `Player` singleton rafraîchit le token automatiquement toutes les 4 minutes.
+
+**Composant de lecture :**
+
+```typescript
+import { NativePlayer } from '@demos/offline'
+import type { PlayMetricsReport } from '@demos/offline'
+
+<NativePlayer
+  trackRef={{ cb: 5400863209100, disc: 1, track: 3 }}
+  playing={isPlaying}
+  seekToMs={seekPosition}         // null = pas de seek en cours
+  title="Fête foraine"
+  artist="Christophe Maé"
+  coverUrl="https://example.com/cover.jpg"
+  onReady={() => setDuration(…)}
+  onTimeUpdate={(e) => setPosition(e.nativeEvent.positionMs)}
+  onEnded={() => playNext()}
+  onError={(e) => console.error(e.nativeEvent.message)}
+  onMetrics={(report: PlayMetricsReport) => sendAnalytics(report)}
+/>
+```
+
+`NativePlayer` est un composant Expo Module View (1×1 caché). Il se monte une fois au root layout ou dans le composant `PersistentPlayer`. Le changement de `trackRef` déclenche un nouveau chargement.
+
+**Prefetch gapless :**
+
+```typescript
+// Dans l'effet ou callback timeupdate du PersistentPlayer
+if (positionMs >= durationMs - 5000 && nextRef) {
+  void Player.prefetch(nextRef).catch(() => {})
+}
+```
+
+**`StreamSession` — API shape (Swift / Kotlin) :**
+
+`StreamSession` est l'objet bas-niveau géré par le module ; tu n'en as normalement pas besoin directement. Pour information :
+
+- `bootstrap()` → `POST /init-stream` → `{sessionId, fileSize, key, iv, contentType}`
+- `read(range)` → `GET /stream/<sid>` + déchiffrement AES-CTR aligné bloc
+- `heartbeat()` → `POST /heartbeat/<sid>`
+- Gestion d'erreur : 401 → retry avec nouveau token, 410 → re-bootstrap, 403 → fatal `SubscriptionExpiredError`, 5xx → backoff exponentiel
+- `metrics()` → `SessionMetrics { bootstrapMs, firstRangeMs, firstDecryptMs, fileSizeBytes, sessionRotations }`
+
+`OfflineService.openSource(ref, workerUrl, tokenProvider)` retourne un `ByteSource` : `BlobSource` si la track est dans le catalogue offline local, sinon `StreamSource` (qui wrape la `StreamSession`). Point d'entrée unique pour les deux modes.
+
+**Schéma `PlayMetricsReport` :**
+
+```typescript
+interface PlayMetricsReport {
+  bootstrapMs: number       // POST /init-stream → réponse
+  firstKeyMs: number        // toujours 0 (clé incluse dans bootstrap)
+  firstRangeMs: number      // premier GET /stream/<sid> → premier byte décrypté
+  firstCanplayMs: number    // bootstrap + premier range → player ready
+  totalPlayMs: number       // durée de lecture effective
+  bufferUnderruns: number
+  sessionRotations: number  // re-bootstraps (session 410 récupérée)
+  fileSizeBytes: number
+  outcome: 'completed' | 'aborted' | 'error'
+}
+```
 
 #### 6.5.3 Native iOS (Swift / SwiftUI / UIKit)
 
-Approche : `AVPlayer` avec un `AVAssetResourceLoaderDelegate` qui intercepte les range requests, fetch chiffré côté worker, déchiffre AES-CTR via `CryptoKit`, et répond à AVPlayer.
+Avec le **Pattern B**, l'intégration iOS est couverte par le module Expo (§6.5.2) — pas besoin d'écrire de code Swift custom. L'intégration AVPlayer est gérée par `SasPlayerResourceLoader` (scheme `sasplayer://<trackId>/audio.m4a`) livré dans `modules/offline-core/`.
 
-```swift
-import AVFoundation
-import CryptoKit
+Pour une app **Swift native pure** (sans React Native), le Swift Package `OfflineCore` expose la même abstraction. Voir `demos/ios-native/` dans le repo MCP pour une implémentation de référence.
 
-struct StreamSession {
-    let sessionId: String
-    let fileSize: Int
-    let keyB64: String
-    let ivB64: String
-}
+**Lock-screen avec Pattern B :** Now Playing Info Center (titre / artiste / artwork + commandes play/pause/next/prev + seek bar via `changePlaybackPositionCommand`) est configuré automatiquement par le module à chaque `load()`. Aucun code bridge custom nécessaire.
 
-final class SecureStreamLoader: NSObject, AVAssetResourceLoaderDelegate {
-    private let workerUrl = URL(string: "https://stream.musicme.cc")!
-    private let session: StreamSession
-
-    init(session: StreamSession) { self.session = session }
-
-    func resourceLoader(_ loader: AVAssetResourceLoader,
-                        shouldWaitForLoadingOfRequestedResource req: AVAssetResourceLoadingRequest) -> Bool {
-        if let info = req.contentInformationRequest {
-            info.contentType = "audio/mp4"
-            info.contentLength = Int64(session.fileSize)
-            info.isByteRangeAccessSupported = true
-        }
-        guard let dataReq = req.dataRequest else { req.finishLoading(); return true }
-
-        let start = Int(dataReq.requestedOffset)
-        let end = start + dataReq.requestedLength - 1
-
-        Task {
-            do {
-                var r = URLRequest(url: workerUrl.appendingPathComponent("stream/\(session.sessionId)"))
-                r.setValue("bytes=\(start)-\(end)", forHTTPHeaderField: "Range")
-                let (cipher, resp) = try await URLSession.shared.data(for: r)
-                let http = resp as! HTTPURLResponse
-                let counterStart = Int(http.value(forHTTPHeaderField: "X-Counter-Start") ?? "0") ?? 0
-                let skipBytes = Int(http.value(forHTTPHeaderField: "X-Skip-Bytes") ?? "0") ?? 0
-                let plain = try aesCtrDecrypt(cipher: cipher,
-                                               keyB64: session.keyB64,
-                                               ivB64: session.ivB64,
-                                               counterStart: counterStart)
-                let payload = skipBytes > 0 ? plain.subdata(in: skipBytes..<plain.count) : plain
-                dataReq.respond(with: payload)
-                req.finishLoading()
-            } catch {
-                req.finishLoading(with: error)
-            }
-        }
-        return true
-    }
-}
-
-// AES-256-CTR avec compteur = base IV + counterStart (big-endian add).
-func aesCtrDecrypt(cipher: Data, keyB64: String, ivB64: String, counterStart: Int) throws -> Data {
-    let key = SymmetricKey(data: Data(base64Encoded: keyB64)!)
-    var counter = [UInt8](Data(base64Encoded: ivB64)!)  // 16 octets
-    var carry = counterStart
-    var i = 15
-    while i >= 0 && carry > 0 {
-        let sum = Int(counter[i]) + (carry & 0xff)
-        counter[i] = UInt8(sum & 0xff)
-        carry = (carry >> 8) + (sum >> 8)
-        i -= 1
-    }
-    let nonce = try AES.GCM.Nonce(data: Data(counter))
-    // Note: CryptoKit n'expose pas AES-CTR directement. Utilise CommonCrypto (CCCrypt
-    // avec kCCAlgorithmAES + kCCModeCTR) ou un wrapper Swift dédié, ex.
-    // https://github.com/krzyzanowskim/CryptoSwift `AES(key:..., blockMode: CTR(iv:counter))`.
-    // L'objet `nonce` ci-dessus est un placeholder — remplace par l'appel CTR effectif.
-    fatalError("plug your AES-CTR primitive here (CommonCrypto or CryptoSwift)")
-}
-```
-
-Câblage avec un scheme custom pour forcer AVPlayer à passer par le delegate :
-
-```swift
-let custom = URL(string: "secured://stream/\(session.sessionId)")!
-let asset = AVURLAsset(url: custom)
-let loader = SecureStreamLoader(session: session)
-asset.resourceLoader.setDelegate(loader, queue: DispatchQueue(label: "secure-stream"))
-let player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
-player.play()
-```
-
-Étapes en amont (à faire une fois par morceau, depuis ton front natif) :
-1. Backend mint d'un JWT (route `/api/player-token` côté ton serveur, identique à la version web).
-2. `POST /init-stream` avec `Authorization: Bearer <jwt>` → récupère `sessionId`, `fileSize`, `keyB64`, `ivB64`.
-3. Construis la `StreamSession`, instancie `SecureStreamLoader`, lance AVPlayer.
-4. Heartbeat : un `Timer.scheduledTimer(withTimeInterval: 10)` qui POST `https://stream.musicme.cc/heartbeat/<sid>` avec `{ duration_ms: player.currentTime * 1000, complete: false }`. Au `playbackEnded` ou `destroy`, envoie un dernier heartbeat avec `complete: true`.
-
-Compter ~150 lignes Swift bien testées (loader + AES-CTR + heartbeat + gestion d'erreur). Ré-implémentation 1:1 du SDK web.
+**Lock-screen avec Pattern A :** tu dois bridger manuellement `MPNowPlayingInfoCenter.default()` depuis le côté natif (module Expo ou `RCTBridgeModule`).
 
 #### 6.5.4 Native Android (Kotlin / Java)
 
-Approche miroir : ExoPlayer + un `DataSource.Factory` custom qui appelle `/init-stream` à l'ouverture du `MediaSource`, puis intercepte les `DataSpec` (offset + length) pour fetch + déchiffrer.
+Avec le **Pattern B**, l'intégration Android est couverte par le module Expo (§6.5.2). ExoPlayer est wrappé via `SasPlayerDataSource` (scheme `sasplayer://<trackId>/audio.m4a`) livré dans `modules/offline-core-android/`. Le foreground service `mediaPlayback` + `MediaSession` + `AudioFocus` + `ACTION_SEEK_TO` sont gérés automatiquement.
 
-- Déchiffrement : `Cipher.getInstance("AES/CTR/NoPadding")` avec `IvParameterSpec(counterBytes)` où `counterBytes = baseIv + counterStart` (même algo big-endian).
-- Heartbeat : `WorkManager` ou `Handler.postDelayed` toutes les 10 s.
-- Mêmes endpoints HTTP, mêmes en-têtes (`X-Counter-Start`, `X-Skip-Bytes`) que côté web/iOS.
+Pour une app **Kotlin native pure** (sans React Native), voir `demos/react-native/modules/offline/android/` et `modules/offline-core-android/` dans le repo MCP pour une implémentation de référence.
 
-Pour la même raison qu'en 6.5.3, n'écris ce code que si la WebView ne couvre pas tes besoins UX.
+**Note Pattern A / Android :** le processus Chromium sandboxé de la WebView peut être évincé par l'OOM killer sans que RN soit notifié. Le Pattern B élimine cette dépendance.
 
 ---
 
@@ -804,12 +844,12 @@ Pour la même raison qu'en 6.5.3, n'écris ce code que si la WebView ne couvre p
 
 | Variable | Côté | Donné par | Exemple |
 |---|---|---|---|
-| `PARTNER_ID` | backend | l'opérateur musicme | `mon-site` |
-| `MINT_KEY` | backend | l'opérateur musicme (one-shot) | `mk_live_…` |
+| `PARTNER_ID` | backend | opérateur musicme | `mon-site` |
+| `MINT_KEY` | backend | opérateur musicme (one-shot) | `mk_live_…` |
 | `ADMIN_URL` | backend | constante | `https://admin-stream.musicme.cc` |
 | `STREAM_URL` | frontend | constante | `https://stream.musicme.cc` |
-| Allowed origins | déclaré côté admin | l'opérateur musicme via le partner record | `https://www.mon-site.fr` |
-| Static IP serveur | déclaré côté admin (CIDR) | toi → l'opérateur musicme | `1.2.3.4/32` |
+| Allowed origins | déclaré côté admin | opérateur musicme | `https://www.mon-site.fr` |
+| Static IP serveur | déclaré côté admin (CIDR) | toi → opérateur musicme | `1.2.3.4/32` |
 
 ---
 
@@ -833,7 +873,7 @@ Pour la même raison qu'en 6.5.3, n'écris ce code que si la WebView ne couvre p
 |---|---|---|
 | `missing_config` à chaque appel d'outil MCP | `MUSICME_ONBOARDING_API_KEY` non lu par le serveur MCP | Vérifie le bloc `env` dans la config MCP de ton éditeur ; redémarre l'éditeur après édition. Confirme via les logs stderr du MCP : `key_present=yes` attendu. |
 | `unauthorized` (401) sur `register_partner` | Clé d'onboarding mauvaise / révoquée | Contacter l'opérateur musicme pour re-distribuer ou rotate. |
-| `partner_exists` (409) | Slug déjà utilisé | Choisir un autre `partner_id`, ou demander à l'opérateur musicme s'il s'agit d'une enregistrement antérieur que tu as oublié. |
+| `partner_exists` (409) | Slug déjà utilisé | Choisir un autre `partner_id`, ou demander à l'opérateur s'il s'agit d'une enregistrement antérieur que tu as oublié. |
 | `network_error` | Pas d'accès à `admin-stream.musicme.cc` | Vérifier connectivité, proxy, DNS. |
 | L'éditeur ne voit pas l'outil | Le client MCP n'a pas démarré le serveur | Vérifier les logs stderr du client MCP. Tester `uvx --from git+… --help` dans un terminal pour reproduire indépendamment. |
 
@@ -844,8 +884,8 @@ Pour la même raison qu'en 6.5.3, n'écris ce code que si la WebView ne couvre p
 | `mint failed: HTTP 401 missing_mint_key` | Header `X-Mint-Key` absent ou vide | Vérifie l'envvar ; vérifie que le fetch ne réécrit pas les headers. |
 | `mint failed: HTTP 401 invalid_mint_key` | Mauvaise clé, ou clé révoquée | Demande à l'opérateur musicme de re-mint une clé. |
 | `mint failed: HTTP 403 ip_not_allowed` | IP du serveur backend pas dans `INTERNAL_MINT_CIDRS` | Donne ton IP statique à l'opérateur musicme. En dev, configurer `DEV_AUTH_BYPASS=1` côté admin (jamais en prod). |
-| `mint failed: HTTP 400 partner_not_in_managed_mode` | Partenaire en mode `jwks` côté admin | l'opérateur musicme doit faire `POST /api/admin/keys/<id>/rotate`. |
-| `mint failed: HTTP 500 no_active_key` | Aucune clé active pour ton partenaire | l'opérateur musicme doit faire un `rotate` initial pour créer la première paire. |
+| `mint failed: HTTP 400 partner_not_in_managed_mode` | Partenaire en mode `jwks` côté admin | L'opérateur musicme doit faire `POST /api/admin/keys/<id>/rotate`. |
+| `mint failed: HTTP 500 no_active_key` | Aucune clé active pour ton partenaire | L'opérateur musicme doit faire un `rotate` initial pour créer la première paire. |
 
 ### 9.3 Streaming (frontend / SDK)
 
@@ -856,16 +896,16 @@ Pour la même raison qu'en 6.5.3, n'écris ce code que si la WebView ne couvre p
 | `stream HTTP 403 fingerprint_mismatch` | Le client qui appelle `/stream` n'a pas la même IP / user-agent que celui qui a fait `/init-stream` | Relance le flow depuis le même navigateur / même session. Ne **pas** réutiliser un `sessionId` minté côté backend pour servir au frontend. |
 | `stream HTTP 410 session_expired` | Session > TTL (5 min par défaut) | Le SDK gère ce cas via `onSessionExpired` ; si tu fais ton propre code, recommence à `/init-stream`. |
 | Lecture MSE échoue avec `SourceBuffer error code=4` | MP4 non fragmenté | Utiliser `mode: 'mse'` (le SDK fragmente au vol via mp4box.js) ou tomber en `mode: 'blob'`. |
-| `403` sur `/stream` côté CORS | Origine pas dans `allowed_origins` | l'opérateur musicme l'ajoute. Vérifie aussi le CORS preflight (OPTIONS). |
+| `403` sur `/stream` côté CORS | Origine pas dans `allowed_origins` | L'opérateur musicme l'ajoute. Vérifie aussi le CORS preflight (OPTIONS). |
 
 Pour aider au debug, le worker écrit ses warnings dans Wrangler Tail :
 
 ```bash
-# Côté l'opérateur musicme
+# Côté opérateur musicme
 bunx wrangler tail secure-audio-stream --env production
 ```
 
-Demande-lui un coup d'œil si tu coinces sur un comportement non documenté.
+Contacter l'opérateur musicme si tu coinces sur un comportement non documenté.
 
 ---
 
@@ -899,7 +939,7 @@ Avant de pusher en prod :
 - [ ] Page d'erreur si `onSessionExpired` ou `onError` du SDK est appelé (note : `onError` est aussi appelé pour des avertissements **non-fatals** comme `mms_fallback: no_media_source` sur iOS <17.1 ; ne le traite pas comme une fin de lecture si `audio.src` est par la suite assigné).
 - [ ] HTTPS strict partout.
 - [ ] Smoke iOS : ouvre ton site sur un iPhone, joue un morceau. Si tu actives `metrics: { enabled: true }`, vérifie que `report.mode === 'mms'` sur iOS 17.1+ et `'blob'` sur iOS plus ancien.
-- [ ] Si tu cibles React Native ou natif iOS/Android : section §6.5 du présent guide pour le bon chemin (WebView vs réimplémentation native).
+- [ ] Si tu cibles React Native : section §6.5.2 du présent guide. Pattern A (WebView) pour démarrer vite ; Pattern B (module natif `@demos/offline`) pour lock-screen + gapless + fiabilité Android.
 
 Si tu coches tout, l'intégration est prête.
 
@@ -1016,4 +1056,4 @@ Avec ces ~70 lignes de code, l'intégration est faite.
 
 ---
 
-*Dernière mise à jour : 2026-05-10 — ajout du support iOS via `ManagedMediaSource` (auto-détecté côté SDK, aucun changement partenaire requis) et de la section §6.5 plateformes non-web (React Native, natif iOS/Android). En cas de doute, contacter l'opérateur musicme (`musicme@`).*
+*Dernière mise à jour : 2026-05-14 — §6.5.2 Pattern B (module natif RN `@demos/offline` — AVPlayer/ExoPlayer, lock-screen intégré, gapless prefetch, métriques). Pattern A (WebView) conservé comme alternative documentée. En cas de doute, contacter l'opérateur musicme (`support@musicme.cc`).*

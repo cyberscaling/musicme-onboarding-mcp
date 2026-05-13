@@ -1,0 +1,26 @@
+# Maestro can't simulate iOS Control Center on simulator. This flow verifies
+# the prerequisite: backgrounded app keeps playing (UIBackgroundModes audio).
+# Full lock-screen + Control Center tap interaction needs manual verification.
+appId: cc.musicme.sasdemo.rn
+---
+- launchApp
+- tapOn: "Login as Demo"
+- waitForAnimationToEnd
+- tapOn: "Recherche"
+- tapOn:
+    id: "search-input"
+- inputText: "5400863209100"
+- tapOn:
+    text: "Ouvrir album UPC 5400863209100"
+- waitForAnimationToEnd
+- tapOn:
+    index: 0
+- assertVisible:
+    text: "❚❚"
+    timeout: 15000
+- pressKey: "Home"
+- waitForAnimationToEnd:
+    timeout: 10000
+- launchApp:
+    clearState: false
+- assertVisible: "❚❚"

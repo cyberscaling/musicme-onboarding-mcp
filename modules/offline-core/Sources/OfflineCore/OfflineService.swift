@@ -63,3 +63,16 @@ public final class OfflineService {
         )
     }
 }
+
+public extension OfflineService {
+    func openSource(ref: StreamSession.TrackRef,
+                    workerUrl: URL,
+                    tokenProvider: @escaping @Sendable () async throws -> String,
+                    urlSession: URLSession = .shared) throws -> ByteSource {
+        let trackId = "\(ref.cb):\(ref.disc):\(ref.track)"
+        if try catalog.get(trackId: trackId) != nil {
+            return try BlobSource(trackId: trackId, catalog: catalog, blobStore: blobStore, keyVault: keyVault)
+        }
+        return StreamSource(workerUrl: workerUrl, tokenProvider: tokenProvider, trackRef: ref, urlSession: urlSession)
+    }
+}

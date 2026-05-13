@@ -1,57 +1,41 @@
 import AVFoundation
 import Foundation
 
-/// Bridges AVPlayer's ranged loading to the OfflineCore decryption pipeline.
-class OfflineAssetResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
-    static let scheme = "offline-asset"
+/// Routes AVAsset resource loading requests to a `ByteSource`. URL scheme:
+/// `sasplayer://<trackId>/audio.m4a` — the trackId is unused by this class
+/// (resolution happens at construction); kept for AVFoundation's URL handling.
+class SasPlayerResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
+    static let scheme = "sasplayer"
 
-    private let service: OfflineService
-    private let deviceIdProvider: () -> String
+    private let source: ByteSource
+    private let workQueue = DispatchQueue(label: "cc.musicme.sasplayer.loader")
 
-    init(service: OfflineService, deviceIdProvider: @escaping () -> String) {
-        self.service = service
-        self.deviceIdProvider = deviceIdProvider
+    init(source: ByteSource) {
+        self.source = source
     }
 
     func resourceLoader(
         _ resourceLoader: AVAssetResourceLoader,
         shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest
     ) -> Bool {
-        guard let url = loadingRequest.request.url,
-              let host = url.host?.removingPercentEncoding else {
-            loadingRequest.finishLoading(with: NSError(domain: "OfflineAsset", code: 400))
-            return true
-        }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.serve(trackId: host, loadingRequest: loadingRequest)
+        workQueue.async {
+            Task {
+                await self.serve(loadingRequest)
+            }
         }
         return true
     }
 
-    private func serve(trackId: String, loadingRequest: AVAssetResourceLoadingRequest) {
+    private func serve(_ loadingRequest: AVAssetResourceLoadingRequest) async {
         do {
-            guard let row = try service.catalog.get(trackId: trackId) else {
-                throw OfflineError.trackNotFound
-            }
-
-            if row.deviceId != deviceIdProvider() {
-                try service.catalog.remove(trackId: trackId)
-                try? service.blobStore.delete(trackId: trackId)
-                throw OfflineError.deviceIdMismatch
-            }
-
-            let now = Int64(Date().timeIntervalSince1970)
-            if row.licenseExp < now {
-                throw OfflineError.licenseExpired
-            }
+            // StreamSource needs a bootstrap before fileSize is known.
+            if let ss = source as? StreamSource { try await ss.prepare() }
 
             if let info = loadingRequest.contentInformationRequest {
                 info.contentType = AVFileType.m4a.rawValue
-                info.contentLength = row.sizeBytes
+                info.contentLength = source.fileSize
                 info.isByteRangeAccessSupported = true
             }
-
             guard let dataRequest = loadingRequest.dataRequest else {
                 loadingRequest.finishLoading()
                 return
@@ -59,36 +43,20 @@ class OfflineAssetResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
 
             let start = dataRequest.requestedOffset
             let length = dataRequest.requestedLength
-            // `requestedLength` is `Int.max` for open-ended requests, which
-            // overflows `start + Int64(length) - 1`. Clamp against remaining
-            // file size before computing `end`.
-            let remaining = row.sizeBytes - start
-            let clampedLength = min(Int64(length), remaining)
-            let end = start + clampedLength - 1
+            let remaining = source.fileSize - start
+            let clamped = min(Int64(length), max(remaining, 0))
+            let endExclusive = start + clamped
 
-            let alignedStart = (start / 16) * 16
-            let skip = Int(start - alignedStart)
-            let wireLength = Int(end - alignedStart + 1)
-            let blockIndex = Int(alignedStart / 16)
-
-            var trackKey = try service.keyVault.unwrap(
-                ciphertext: row.wrappedKey, nonce: row.wrapNonce
-            )
-            defer {
-                trackKey.withUnsafeMutableBytes { ptr in
-                    memset(ptr.baseAddress, 0, ptr.count)
-                }
+            // Stream the data in 256KB slabs to keep memory low and start
+            // delivering bytes earlier.
+            let slabSize: Int64 = 256 * 1024
+            var cursor = start
+            while cursor < endExclusive {
+                let next = min(cursor + slabSize, endExclusive)
+                let chunk = try await source.read(range: cursor..<next)
+                dataRequest.respond(with: chunk)
+                cursor = next
             }
-
-            let ciphertext = try service.blobStore.pread(
-                path: row.blobPath, offset: alignedStart, length: wireLength
-            )
-            let aligned = try AESCTRDecryptor.decrypt(
-                ciphertext: ciphertext, key: trackKey, baseIv: row.trackIv, blockIndex: blockIndex
-            )
-            let userPlaintext = aligned.subdata(in: skip..<aligned.count)
-
-            dataRequest.respond(with: userPlaintext)
             loadingRequest.finishLoading()
         } catch {
             loadingRequest.finishLoading(with: error)

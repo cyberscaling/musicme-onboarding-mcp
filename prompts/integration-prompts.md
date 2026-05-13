@@ -368,6 +368,10 @@ que le partenaire veut activer une ou plusieurs features avancées :
 - **Playlist dynamique** (`Playlist` SDK) — auto-advance + lookahead
 - **JWT `sub_exp`** — clamp TTL license offline sur date fin abo
 - **Offline encrypted** (iOS / Android / RN) — lecture sans réseau
+- **Player natif RN (Pattern B)** — pour les partenaires RN qui veulent
+  lock-screen + gapless + fiabilité Android. Remplace la WebView cachée
+  par `NativePlayer` + `Player` singleton (module vendoré `@demos/offline`).
+  Cf `docs/integration-guide.md` §6.5.B et `docs/advanced-integration.md` §4.3 + §5.
 
 Référence canonique : `docs/advanced-integration.md` dans ce repo.
 
@@ -387,13 +391,16 @@ prérequis spécifiques :
 
 1. Mobile : y a-t-il déjà une app mobile (RN / Swift / Kotlin) dans ce
    monorepo, ou est-ce purement web ? (Web seul = offline pas applicable.)
-2. Player UX : l'app a-t-elle une notion de "queue / playlist" qui mérite
+2. Si app RN : utilise-t-elle le Pattern A (WebView cachée + SDK web) ou
+   Pattern B (module natif `@demos/offline`) ? Chercher `react-native-webview`
+   et `player-web/` dans les dépendances pour le déterminer.
+3. Player UX : l'app a-t-elle une notion de "queue / playlist" qui mérite
    `Playlist` SDK, ou juste play one-shot ?
-3. Mint JWT : la route backend `/api/player-token` peut-elle lire la date
+4. Mint JWT : la route backend `/api/player-token` peut-elle lire la date
    de fin d'abonnement de l'utilisateur (DB / SaaS billing / autre) ?
-4. UI réseau : y a-t-il un indicateur "offline" / "no connection" existant
+5. UI réseau : y a-t-il un indicateur "offline" / "no connection" existant
    à réutiliser, ou faut-il en créer un ?
-5. Catalogue : y a-t-il une notion de track "téléchargeable" vs "stream
+6. Catalogue : y a-t-il une notion de track "téléchargeable" vs "stream
    only" (gestion droits / quotas) ?
 
 Sortie :
@@ -403,6 +410,7 @@ Sortie :
 - offline iOS : OUI/NON (raison)
 - offline Android : OUI/NON
 - offline RN : OUI/NON
+- player natif RN (Pattern B) : OUI/NON (Pattern A détecté → migration possible)
 - prefetch web : OUI (toujours, dès que SDK utilisé)
 - playlist dynamique web : OUI/NON (selon UX queue)
 - sub_exp JWT : OUI/NON (selon billing source)
@@ -416,6 +424,7 @@ Sous-phase 7.B — CHOIX
 Demande à l'utilisateur (AskUserQuestion, max 4 questions) :
 - Quelles features parmi les éligibles veut-il activer maintenant ?
 - Si offline mobile retenu : iOS / Android / RN / les 3 ?
+- Si player natif RN retenu : migration depuis Pattern A ou nouveau projet ?
 - Si sub_exp retenu : où vient la date (column DB / Stripe webhook / autre) ?
 
 Sous-phase 7.C — SPECS
@@ -474,10 +483,23 @@ Pour CHAQUE feature retenue, expose une checklist d'activation. Référence :
 | ADV-OFF-RN-01 | Vendor `demos/react-native/modules/offline/` + ajouter dep `file:./modules/offline` | package.json |
 | ADV-OFF-RN-02 | `expo prebuild --clean` puis `expo run:ios` / `run:android` (autolink module natif) | shell |
 | ADV-OFF-RN-03 | UI `DownloadButton` réutilisé ou repensé | composant |
-| ADV-OFF-RN-04 | Routing `PersistentPlayer` : si `OfflineModule.hasTrack(id)` → `<OfflineNativePlayer>` sinon stream normal | composant player |
+| ADV-OFF-RN-04 | Routing `PersistentPlayer` : si `OfflineModule.hasTrack(id)` → `<NativePlayer>` sinon stream normal | composant player |
 | ADV-OFF-RN-05 | Auto-refresh via `refreshExpiringLicenses` au `AppState change=active` | `_layout.tsx` ou App.tsx |
 | ADV-OFF-RN-06 | Logout = `await OfflineModule.wipeAll()` (try/catch — module absent en Expo Go) | auth flow |
 | ADV-OFF-RN-07 | UI alerte `SubscriptionExpiredError` (Alert one-shot per session) | `_layout.tsx` |
+
+### Player natif RN (Pattern B) — migration depuis Pattern A ou nouveau projet
+| WI | Action | Fichier |
+|---|---|---|
+| ADV-RN-B-01 | Vendor `modules/offline-core/`, `modules/offline-core-android/`, `demos/react-native/modules/offline/` | repo |
+| ADV-RN-B-02 | Ajouter `@demos/offline` dans `package.json`, référencer `offline-core-android` dans `settings.gradle` | build files |
+| ADV-RN-B-03 | `expo prebuild --clean` puis `expo run:ios` / `run:android` | shell |
+| ADV-RN-B-04 | Appeler `Player.configure({ baseUrl, tokenProvider })` au root layout | `_layout.tsx` |
+| ADV-RN-B-05 | Remplacer `<WebView>` caché + bridge par `<NativePlayer trackRef={…} playing={…} seekToMs={…} title artist coverUrl onMetrics />` | composant PersistentPlayer |
+| ADV-RN-B-06 | Câbler `Player.prefetch(nextRef)` sur timeupdate quand `positionMs >= durationMs - 5000` | composant PersistentPlayer |
+| ADV-RN-B-07 | Câbler `onMetrics` → analytics | composant PersistentPlayer |
+| ADV-RN-B-08 | Retirer deps `react-native-webview` + `@cyberscaling/secure-audio-stream-client` (si RN seul) | package.json |
+| ADV-RN-B-09 | Vérifier `UIBackgroundModes: ['audio']` dans `app.json > ios.infoPlist` | app.json |
 
 Sous-phase 7.D — IMPLÉMENTATION
 ================================
@@ -491,6 +513,7 @@ Implémente les WI sélectionnés dans l'ordre raisonnable. Tests à chaque WI :
   côté worker + `SubscriptionExpiredError` côté client.
 - Offline : `downloadTrack` + airplane mode + jouer la track + confirmer pas
   de network call. Puis logout + relogin + downloads vides.
+- Player natif RN (Pattern B) : `Player.configure()` appelé → `<NativePlayer>` monte → track joue → lock-screen apparaît sur device physique → gapless (position > duration - 5s → prefetch → next track sans silence).
 
 Sous-phase 7.E — DOC
 ====================

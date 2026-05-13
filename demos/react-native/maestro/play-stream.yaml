@@ -1,0 +1,17 @@
+appId: cc.musicme.sasdemo.rn
+---
+- launchApp
+- tapOn: "Login as Demo"
+- waitForAnimationToEnd
+- tapOn: "Recherche"
+- tapOn:
+    id: "search-input"
+- inputText: "5400863209100"
+- tapOn:
+    text: "Ouvrir album UPC 5400863209100"
+- waitForAnimationToEnd
+- tapOn:
+    index: 0
+- assertVisible:
+    text: "❚❚"
+    timeout: 15000

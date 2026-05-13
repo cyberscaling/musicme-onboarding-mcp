@@ -1,0 +1,27 @@
+# Slow flow — waits past worker session DO TTL (300s) to verify
+# StreamSession.read() handles 410 → re-bootstrap transparently.
+# Tagged so CI can opt-in/out: maestro test --include-tags=slow
+tags:
+  - slow
+appId: cc.musicme.sasdemo.rn
+---
+- launchApp
+- tapOn: "Login as Demo"
+- waitForAnimationToEnd
+- tapOn: "Recherche"
+- tapOn:
+    id: "search-input"
+- inputText: "5400863209100"
+- tapOn:
+    text: "Ouvrir album UPC 5400863209100"
+- waitForAnimationToEnd
+- tapOn:
+    index: 0
+- assertVisible:
+    text: "❚❚"
+    timeout: 15000
+# Wait > 5 min for session DO to expire (TTL = 300s, give 20s margin).
+- waitForAnimationToEnd:
+    timeout: 320000
+# Still playing — DataSource transparently re-bootstrapped via 410 → re-init.
+- assertVisible: "❚❚"

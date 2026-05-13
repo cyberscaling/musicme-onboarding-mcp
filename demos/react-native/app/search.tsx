@@ -1,6 +1,6 @@
 // demos/react-native/app/(tabs)/search.tsx
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { router } from 'expo-router'
 import { TopNav } from '@/components/TopNav'
 import { AlbumCard } from '@/components/AlbumCard'
@@ -9,6 +9,8 @@ import { catalog, type Album, type Artist } from '@/lib/catalog'
 import { ApiError, api } from '@/lib/api'
 import { logoutAndReset } from '@/lib/auth'
 import { usePlayer } from '@/lib/playerStore'
+
+const UPC_RE = /^\d{12,13}$/
 
 export default function Search() {
   const [q, setQ] = useState('')
@@ -55,6 +57,10 @@ export default function Search() {
   }, [q])
 
   const empty = useMemo(() => q.trim().length < 2, [q])
+  const upcMatch = useMemo(() => {
+    const t = q.trim()
+    return UPC_RE.test(t) ? t : null
+  }, [q])
 
   return (
     <View style={s.root}>
@@ -68,12 +74,26 @@ export default function Search() {
           style={s.input}
           value={q}
           onChangeText={setQ}
-          placeholder="titre, album, artiste"
+          onSubmitEditing={() => {
+            if (upcMatch) router.push(`/album/${upcMatch}`)
+          }}
+          placeholder="titre, album, artiste — ou UPC 12-13 chiffres"
           placeholderTextColor="#555"
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
+          keyboardType={/^\d+$/.test(q) ? 'number-pad' : 'default'}
         />
+        {upcMatch ? (
+          <Pressable
+            style={({ pressed }) => [s.upcBtn, pressed && s.upcBtnPressed]}
+            onPress={() => router.push(`/album/${upcMatch}`)}
+            accessibilityRole="button"
+            accessibilityLabel={`open album by UPC ${upcMatch}`}
+          >
+            <Text style={s.upcBtnText}>Ouvrir album UPC {upcMatch} →</Text>
+          </Pressable>
+        ) : null}
       </View>
       {busy ? <ActivityIndicator color="#888" style={{ marginTop: 12 }} /> : null}
       {err ? <Text style={s.err}>error: {err}</Text> : null}
@@ -113,6 +133,9 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   inputWrap: { paddingHorizontal: 16, paddingVertical: 12 },
   input: { borderWidth: 1, borderColor: '#333', color: '#eee', padding: 12, borderRadius: 6, fontSize: 16 },
+  upcBtn: { marginTop: 10, padding: 12, backgroundColor: '#0a3c6b', borderRadius: 6, alignItems: 'center' },
+  upcBtnPressed: { backgroundColor: '#082d4f' },
+  upcBtnText: { color: '#cce4ff', fontSize: 14, fontFamily: 'Menlo' },
   err: { color: '#ff6666', padding: 16, fontFamily: 'Menlo' },
   hint: { color: '#666', padding: 24, textAlign: 'center' },
   results: { paddingBottom: 200 },

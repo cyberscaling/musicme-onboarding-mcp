@@ -18,13 +18,27 @@ class OfflineExpoModule : Module() {
         Name("OfflineExpoModule")
 
         Events("offline:download:progress", "offline:download:complete",
-               "offline:download:error", "offline:license:expired")
+               "offline:download:error", "offline:license:expired",
+               "player:remote:next", "player:remote:prev")
 
         OnCreate {
             val ctx = appContext.reactContext ?: return@OnCreate
             val root = File(ctx.filesDir, "offline")
             service = try { OfflineService(ctx, root) } catch (e: Exception) { null }
             OfflineSingleton.service = service
+        }
+
+        OnStartObserving("player:remote:next") {
+            RemoteEvents.onNext = { sendEvent("player:remote:next", emptyMap<String, Any?>()) }
+        }
+        OnStopObserving("player:remote:next") {
+            RemoteEvents.onNext = null
+        }
+        OnStartObserving("player:remote:prev") {
+            RemoteEvents.onPrev = { sendEvent("player:remote:prev", emptyMap<String, Any?>()) }
+        }
+        OnStopObserving("player:remote:prev") {
+            RemoteEvents.onPrev = null
         }
 
         AsyncFunction("ingestDownload") { tmpPath: String, license: String, sizeBytes: Double, metaJson: String? ->
@@ -68,14 +82,49 @@ class OfflineExpoModule : Module() {
             DeviceIdProvider.current(ctx)
         }
 
-        View(OfflineNativePlayer::class) {
-            Prop("trackId") { view: OfflineNativePlayer, trackId: String -> view.load(trackId) }
-            Prop("autoPlay") { view: OfflineNativePlayer, autoPlay: Boolean -> view.autoPlay = autoPlay }
-            Prop("playing") { view: OfflineNativePlayer, playing: Boolean -> view.setPlaying(playing) }
-            Prop("seekToMs") { view: OfflineNativePlayer, seekToMs: Double? ->
-                if (seekToMs != null) view.seek(seekToMs)
+        AsyncFunction("configurePlayer") { workerUrl: String, token: String ->
+            PlayerConfig.workerUrl = workerUrl
+            PlayerConfig.currentToken = token
+            PlayerConfig.tokenProvider = { PlayerConfig.currentToken ?: "" }
+        }
+        AsyncFunction("setStreamToken") { token: String ->
+            PlayerConfig.currentToken = token
+        }
+
+        AsyncFunction("prefetch") { ref: Map<String, Int> ->
+            val cb = ref["cb"] ?: return@AsyncFunction
+            val disc = ref["disc"] ?: 0
+            val track = ref["track"] ?: 0
+            val svc = service ?: return@AsyncFunction
+            val workerUrl = PlayerConfig.workerUrl ?: return@AsyncFunction
+            val tokenProvider = PlayerConfig.tokenProvider ?: return@AsyncFunction
+            val trackId = "$cb:$disc:$track"
+            try {
+                val s = svc.openSource(cc.musicme.offline.TrackRef(cb, disc, track), workerUrl, tokenProvider)
+                kotlinx.coroutines.runBlocking {
+                    if (s is cc.musicme.offline.StreamSource) s.prepare()
+                    runCatching { s.read(0L, minOf(256L * 1024L, s.fileSize)) }
+                }
+                PrefetchCache.put(trackId, s)
+            } catch (_: Throwable) {
+                // best-effort
             }
-            Events("onReady", "onError", "onPlay", "onPause", "onTimeUpdate", "onEnded")
+        }
+
+        View(NativePlayer::class) {
+            Prop("trackRef") { view: NativePlayer, ref: Map<String, Int> ->
+                val cb = ref["cb"] ?: return@Prop
+                val disc = ref["disc"] ?: 0
+                val track = ref["track"] ?: 0
+                view.load(cb, disc, track)
+            }
+            Prop("title")    { view: NativePlayer, t: String? -> view.trackTitle = t }
+            Prop("artist")   { view: NativePlayer, a: String? -> view.trackArtist = a }
+            Prop("coverUrl") { view: NativePlayer, c: String? -> view.trackCoverUrl = c }
+            Prop("autoPlay") { view: NativePlayer, ap: Boolean -> view.autoPlay = ap }
+            Prop("playing")  { view: NativePlayer, p: Boolean -> view.setPlaying(p) }
+            Prop("seekToMs") { view: NativePlayer, t: Double? -> if (t != null) view.seek(t) }
+            Events("onReady","onError","onPlay","onPause","onTimeUpdate","onEnded","onStalled","onSessionRotated","onMetrics")
         }
     }
 

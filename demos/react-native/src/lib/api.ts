@@ -64,8 +64,7 @@ const WARMUP_BATCH_SIZE = 8
  *
  * The function does the boilerplate of resolving the stream worker URL,
  * minting a fresh JWT, and POSTing — partner SDKs use the equivalent
- * `prefetchAlbum(workerUrl, token, cb)` exported from
- * @cyberscaling/secure-audio-stream-client.
+ * `prefetchAlbum(workerUrl, token, cb)` exported from partner SDKs.
  */
 export const api = {
   config: () => call<AppConfig>('/api/config'),

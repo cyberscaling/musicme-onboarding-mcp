@@ -47,6 +47,21 @@ class OfflineService(
     fun makePathHandler(deviceIdProvider: () -> String): OfflinePathHandler =
         OfflinePathHandler(catalog, blobStore, keyVault, deviceIdProvider)
 
+    fun openSource(
+        ref: TrackRef,
+        workerUrl: String,
+        tokenProvider: suspend () -> String,
+        client: okhttp3.OkHttpClient = okhttp3.OkHttpClient(),
+    ): ByteSource {
+        val trackId = "${ref.cb}:${ref.disc}:${ref.track}"
+        val row = catalog.get(trackId)
+        return if (row != null) {
+            BlobSource(trackId, catalog, blobStore, keyVault)
+        } else {
+            StreamSource(workerUrl, tokenProvider, ref, client)
+        }
+    }
+
     override fun close() {
         catalog.close()
     }

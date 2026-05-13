@@ -175,6 +175,80 @@ présent. Cf `docs/advanced-integration.md` §4.
 
 **Web : pas supporté.** On ne protège pas une clé symétrique en JS browser.
 
+### Module player natif RN (`@demos/offline`) — Pattern B
+
+Pour les apps React Native qui veulent lock-screen + gapless + fiabilité Android sans WebView.
+Vendoré dans `demos/react-native/modules/offline/` + `modules/offline-core{,-android}/`.
+**Pattern A (WebView)** reste supporté — Pattern B est le chemin recommandé.
+
+**Setup :**
+
+```typescript
+import { Player } from '@demos/offline'
+
+// Une seule fois au boot (dans _layout.tsx ou App.tsx) :
+Player.configure({
+  baseUrl: 'https://stream.musicme.cc',
+  tokenProvider: async () => {
+    const { token } = await fetch('/api/player-token', { method: 'POST', credentials: 'include' }).then(r => r.json())
+    return token
+  },
+})
+```
+
+Le `Player` singleton rafraîchit le token toutes les 4 minutes.
+
+**Composant vue :**
+
+```typescript
+import { NativePlayer } from '@demos/offline'
+
+<NativePlayer
+  trackRef={{ cb: 5400863209100, disc: 1, track: 3 }}
+  playing={isPlaying}
+  seekToMs={seekPosition}   // null = pas de seek
+  title="Fête foraine"
+  artist="Christophe Maé"
+  coverUrl="https://example.com/cover.jpg"
+  onReady={() => …}
+  onTimeUpdate={(e) => setPosition(e.nativeEvent.positionMs)}
+  onEnded={() => playNext()}
+  onError={(e) => console.error(e.nativeEvent.message)}
+  onMetrics={(report) => sendAnalytics(report)}
+/>
+```
+
+Lock-screen (Now Playing iOS + AirPods + seek bar; MediaSession + foreground service Android) configuré automatiquement à chaque `load()`.
+
+**Gapless prefetch :**
+
+```typescript
+// Sur timeupdate quand positionMs >= durationMs - 5000 :
+void Player.prefetch(nextRef).catch(() => {})
+```
+
+**Métriques — `PlayMetricsReport` émis via `onMetrics` :**
+
+```typescript
+interface PlayMetricsReport {
+  bootstrapMs: number       // POST /init-stream → réponse
+  firstKeyMs: number        // toujours 0 (clé incluse dans bootstrap)
+  firstRangeMs: number      // premier GET /stream/<sid> décrypté
+  firstCanplayMs: number    // bootstrap + premier range → player ready
+  totalPlayMs: number
+  bufferUnderruns: number
+  sessionRotations: number
+  fileSizeBytes: number
+  outcome: 'completed' | 'aborted' | 'error'
+}
+```
+
+**Dépendances npm à retirer lors de la migration Pattern A → B :**
+`react-native-webview`, `@cyberscaling/secure-audio-stream-client` (pour RN).
+Le bundle `player-web/` + l'asset `assets/player.html` sont supprimés.
+
+Cf `docs/advanced-integration.md` §4.3 et §5 (Migration WebView→Natif).
+
 ### Origines acceptées
 
 `https://...` ou loopback dev (`http://localhost`, `http://127.0.0.1`,
@@ -247,6 +321,9 @@ l'utilisateur voit pour que ce soit grep-able.
 | Offline iOS `kCFErrorDomainCFNetwork -1100` | URL `offline://...` mal interprétée par AVPlayer | s'assurer que le `AVAssetResourceLoaderDelegate` est attaché AVANT `play()` |
 | Offline Android `Source error` ExoPlayer | DataSource pas enregistré | passer `OfflineAssetDataSource.Factory(service)` au `ProgressiveMediaSource.Factory(...)` |
 | Logout laisse des downloads | `OfflineModule.wipeAll()` jamais appelé | wire dans le flow logout (best-effort, swallow erreur si module natif absent en Expo Go) |
+| RN Pattern B — `NativePlayer` ne produit pas de son | `Player.configure()` pas appelé avant le premier `trackRef` | appeler `Player.configure({ baseUrl, tokenProvider })` une fois au root layout avant tout render de `NativePlayer` |
+| RN Pattern B — lock-screen ne s'affiche pas | `UIBackgroundModes` non configuré | vérifier `app.json > ios.infoPlist.UIBackgroundModes: ['audio']` + rebuild |
+| RN Pattern B vs Pattern A — quelle path ? | choix d'architecture | Pattern A (WebView) suffit pour intégration rapide sans code natif. Pattern B recommandé si : lock-screen requis, Android fiabilité critique, gapless souhaité, métriques nécessaires. Cf `docs/integration-guide.md` §6.5.2 |
 
 ### Phase 6 (docs)
 | Symptôme | Cause | Fix |

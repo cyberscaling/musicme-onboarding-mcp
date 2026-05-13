@@ -1,3 +1,13 @@
+export type TrackRef = {
+  cb: number
+  disc: number
+  track: number
+}
+
+export function formatTrackRef(ref: TrackRef): string {
+  return `${ref.cb}:${ref.disc}:${ref.track}`
+}
+
 export type OfflineTrack = {
   trackId: string
   mid: number
@@ -12,3 +22,5 @@ export type OfflineEvent =
   | { type: 'offline:download:complete'; trackId: string }
   | { type: 'offline:download:error'; trackId: string; code: string; message: string }
   | { type: 'offline:license:expired'; trackId: string }
+  | { type: 'player:remote:next' }
+  | { type: 'player:remote:prev' }

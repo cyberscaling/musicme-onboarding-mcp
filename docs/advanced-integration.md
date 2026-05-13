@@ -1,6 +1,6 @@
 # 10 — Intégration avancée
 
-> **Complément au guide principal.** Couvre 4 features optionnelles que tu actives au fur et à mesure que ton intégration mûrit : pré-chauffe cache, playlist dynamique, JWT avec date de fin d'abonnement, et lecture offline chiffrée.
+> **Complément au guide principal.** Couvre les features optionnelles que tu actives au fur et à mesure que ton intégration mûrit : pré-chauffe cache, playlist dynamique, JWT avec date de fin d'abonnement, lecture offline chiffrée, et player natif React Native (Pattern B).
 
 ---
 
@@ -12,6 +12,7 @@
 | **Playlist dynamique** (`Playlist` SDK) | Auto-advance gapless + lookahead prefetch + mutations live | 30 min | §2 |
 | **JWT `sub_exp`** | Clamp auto du TTL license offline sur la fin d'abo. 403 immédiat si expiré | 10 min côté backend partenaire | §3 |
 | **Offline encrypted** | Téléchargement + lecture sans réseau. iOS / Android / RN | 1-2 jours par plateforme | §4 |
+| **Player natif RN (Pattern B)** | Lock-screen + gapless + fiabilité Android. Remplace hidden WebView | 0.5-1 jour si déjà sur Pattern A | §5 |
 
 Toutes les features se cumulent indépendamment — tu peux activer offline sans toucher au prefetch, etc.
 
@@ -293,7 +294,81 @@ project(':offline-core-android').projectDir = new File(rootProject.projectDir, '
 
 Puis `expo prebuild` + `expo run:ios` / `run:android` pour autolink le module natif.
 
-#### API publique
+#### Player natif — `NativePlayer` + `Player` singleton
+
+Le module expose deux surfaces principales pour la lecture :
+
+- **`Player` singleton** — gère le token cache, le worker URL, et le prefetch gapless.
+- **`NativePlayer`** — composant vue Expo (1×1 caché) qui wrape AVPlayer (iOS) ou ExoPlayer (Android). Il reçoit la ref de track et déclenche le bootstrap automatiquement.
+
+**Setup au démarrage de l'app :**
+
+```typescript
+import { Player } from '@demos/offline'
+
+// À appeler une seule fois, typiquement dans _layout.tsx ou App.tsx.
+// tokenProvider est un callback qui retourne un JWT frais (le Player
+// le rafraîchit automatiquement toutes les 4 minutes).
+Player.configure({
+  baseUrl: 'https://stream.musicme.cc',
+  tokenProvider: async () => {
+    const { token } = await fetch('/api/player-token', { method: 'POST', credentials: 'include' }).then(r => r.json())
+    return token
+  },
+})
+```
+
+**Composant de lecture :**
+
+```typescript
+import { NativePlayer } from '@demos/offline'
+import type { PlayMetricsReport } from '@demos/offline'
+
+<NativePlayer
+  trackRef={{ cb: 5400863209100, disc: 1, track: 3 }}
+  playing={isPlaying}
+  seekToMs={seekPosition}        // null = pas de seek en cours
+  title="Fête foraine"
+  artist="Christophe Maé"
+  coverUrl="https://example.com/cover.jpg"
+  onReady={() => setDuration(…)}
+  onTimeUpdate={(e) => setPosition(e.nativeEvent.positionMs)}
+  onEnded={() => playNext()}
+  onError={(e) => console.error(e.nativeEvent.message)}
+  onMetrics={(report: PlayMetricsReport) => sendAnalytics(report)}
+/>
+```
+
+`NativePlayer` se monte une fois au root layout (ou au niveau `PersistentPlayer`) et reste monté en permanence. Le changement de `trackRef` déclenche un nouveau chargement. Le composant gère l'intégration lock-screen automatiquement (Now Playing iOS + seek bar + AirPods controls, MediaSession + foreground service + AudioFocus Android) dès `load()`.
+
+**Schéma `PlayMetricsReport` — émis par `onMetrics` en fin de track ou d'abandon :**
+
+```typescript
+interface PlayMetricsReport {
+  bootstrapMs: number       // POST /init-stream → réponse (inclut résolution mid + key + iv)
+  firstKeyMs: number        // toujours 0 (la clé arrive avec le bootstrap, pas de /key séparé)
+  firstRangeMs: number      // premier GET /stream/<sid> → premier byte décrypté
+  firstCanplayMs: number    // bootstrap + premier range décrypté → player ready
+  totalPlayMs: number       // durée de lecture effective (hors pauses)
+  bufferUnderruns: number   // nombre d'interruptions buffer pendant la lecture
+  sessionRotations: number  // nombre de re-bootstraps (session 410 récupérée)
+  fileSizeBytes: number     // taille totale du fichier (audio compressé)
+  outcome: 'completed' | 'aborted' | 'error'
+}
+```
+
+**Prefetch gapless — `Player.prefetch(ref)` :**
+
+Appelle `Player.prefetch(ref)` quand la position courante passe sous `duration - 5s`. Le Player pré-bootstrappe la session suivante et lit les premiers 256 KB ; quand `NativePlayer.load()` est appelé pour la track suivante, il consomme la session pré-fetchée depuis le `PrefetchCache` (Swift + Kotlin) plutôt que de re-bootstrapper.
+
+```typescript
+// Côté PersistentPlayer (ou useEffect sur timeupdate) :
+if (duration > 0 && position >= duration - 5000 && nextRef) {
+  void Player.prefetch(nextRef).catch(() => {})  // non-fatal
+}
+```
+
+#### API publique — téléchargement offline et gestion catalog
 
 ```typescript
 import {
@@ -301,7 +376,6 @@ import {
   downloadTrack,
   refreshLicense,
   refreshExpiringLicenses,
-  OfflineNativePlayer,
   SubscriptionExpiredError,
 } from '@demos/offline'
 
@@ -320,19 +394,9 @@ await OfflineModule.removeTrack('5400863209100:1:3')
 
 // Wipe all (à appeler sur logout)
 await OfflineModule.wipeAll()
-
-// Lecture (composant React)
-<OfflineNativePlayer
-  trackId="5400863209100:1:3"
-  autoPlay
-  playing={true}
-  seekToMs={null}
-  onReady={() => …}
-  onTimeUpdate={(e) => console.log(e.nativeEvent.position)}
-  onEnded={() => …}
-  onError={(e) => console.error(e.nativeEvent.message)}
-/>
 ```
+
+**`OfflineService.openSource(ref, workerUrl, tokenProvider)`** est le point d'entrée unique côté natif (Swift / Kotlin) : retourne un `BlobSource` si la track est dans le catalogue offline local, sinon un `StreamSource` (qui wrape une `StreamSession`). `NativePlayer` et `SasPlayerResourceLoader` / `SasPlayerDataSource` consomment ce `ByteSource` de façon transparente — le code applicatif n'a pas à distinguer online/offline.
 
 #### Auto-refresh des licenses
 
@@ -503,12 +567,53 @@ Implémentation de référence vivante dans le repo public :
 
 ---
 
-## 5. Quotas et coûts spécifiques aux features avancées
+## 5. Migration depuis le chemin WebView (RN uniquement)
+
+Cette section s'adresse aux partenaires React Native qui utilisaient l'ancien chemin **Pattern A** (hidden WebView + SDK `@cyberscaling/secure-audio-stream-client` + `react-native-webview` + bundle `player-web/`). Le SDK web reste **inchangé** pour les intégrations web (aucune action requise pour les partenaires web).
+
+### 5.1 Comparatif — Pattern A vs Pattern B
+
+| Critère | Pattern A — WebView (legacy) | Pattern B — Natif (recommandé) |
+|---|---|---|
+| Effort d'intégration | Faible — pas de code natif | Moyen — vendor le module Expo + `expo prebuild` |
+| Dépendances RN | `react-native-webview` + `@cyberscaling/secure-audio-stream-client` | `@demos/offline` (vendoré) + modules natifs |
+| Lock-screen (Now Playing, AirPods, seek bar) | Nécessite un bridge JS→native custom | Intégré automatiquement (`NowPlayingCenter` iOS, `MediaSession` Android) |
+| Lecture en arrière-plan | `UIBackgroundModes=audio` requis + instable sous pression mémoire | Stable — AVPlayer / ExoPlayer avec foreground service Android |
+| Gapless prefetch | Non supporté | `Player.prefetch(ref)` — zéro latence au switch |
+| Fiabilité Android | Processus Chromium sandboxé peut être évincé (OOM killer) | Pas de processus Chromium — ExoPlayer natif |
+| Métriques | Non disponibles | `PlayMetricsReport` complet via `onMetrics` |
+
+Le Pattern A reste documenté et supporté. Pattern B est le chemin utilisé par l'app de démo de référence `demos/react-native/`.
+
+### 5.2 Ce qu'on supprime lors de la migration A → B
+
+- Dépendance npm `react-native-webview` (à retirer du `package.json`).
+- Dépendance npm `@cyberscaling/secure-audio-stream-client` (pour RN uniquement — la garder si l'app a aussi une surface web).
+- Bundle `player-web/` et l'asset `assets/player.html` (supprimés du repo).
+- Le composant `<WebView>` monté en hidden 1×1 au root layout.
+- Le bridge de message-passing (commandes/events `configure`, `play`, `pause`, `seek`, etc.).
+
+### 5.3 Ce qu'on ajoute
+
+1. Vendor `modules/offline-core/` + `modules/offline-core-android/` + `demos/react-native/modules/offline/` depuis le repo MCP.
+2. `Player.configure({ baseUrl, tokenProvider })` au boot de l'app.
+3. Composant `<NativePlayer trackRef={…} playing={…} seekToMs={…} title artist coverUrl onMetrics … />` à la place du `<WebView>` caché.
+4. `Player.prefetch(ref)` sur l'événement `timeupdate` (position > duration - 5s).
+5. `UIBackgroundModes: ['audio']` dans `app.json > ios.infoPlist` (déjà requis pour le Pattern A, mais maintenant géré proprement par le foreground service).
+
+### 5.4 Continuité — Pattern A toujours supporté
+
+Si tu ne veux pas faire la migration maintenant : **rien à changer**. Le chemin WebView continue de fonctionner. Les limitations documentées (Android process eviction, absence de gapless, lock-screen sans bridge custom) restent présentes, mais elles n'empirent pas. Migre vers Pattern B quand ces limitations deviennent bloquantes pour ton UX.
+
+---
+
+## 6. Quotas et coûts spécifiques aux features avancées
 
 | Évènement | Compté comme play ? | Bandwidth | Notes |
 |---|---|---|---|
 | `prefetchAlbum` | Non | KV + edge cache writes | Pas d'event facturé, juste warm-up |
 | `prefetchSession` | Non | Session DO PUT | Compté à la première lecture réelle |
+| `Player.prefetch(ref)` (RN natif) | Non | Bootstrap + premier 256 KB range | Compte à la première lecture réelle (même sémantique que `prefetchSession`) |
 | `Playlist` track auto-advance | Oui (1 play / track joué) | Stream | Identique à un play manuel |
 | `downloadTrack` | Oui (1 play / ingest) | Ciphertext download | Compte au moment du download |
 | `refreshLicense` | Non | JWT round-trip | Gratuit |
@@ -518,21 +623,23 @@ Ciphertext = `1.01x` du plaintext (overhead négligeable, ~16 bytes par AES bloc
 
 ---
 
-## 6. Checklist d'activation par feature
+## 7. Checklist d'activation par feature
 
-- [ ] **Prefetch** : `prefetchAlbum` au mount page album. `prefetchSession` sur `timeupdate` quand `currentTime > duration - 5s`.
+- [ ] **Prefetch web** : `prefetchAlbum` au mount page album. `prefetchSession` sur `timeupdate` quand `currentTime > duration - 5s`.
 - [ ] **Playlist dynamique** : remplacer le câblage `<audio>` ad-hoc par `Playlist` SDK. Câbler `onCurrentChange` pour ton UI now-playing.
 - [ ] **`sub_exp`** : ajouter le claim au mint JWT (snippet §3.3). Tester côté client : forcer `sub_exp = now - 1` → confirmer `SubscriptionExpiredError` levée + UI Alert.
 - [ ] **Offline iOS** : ajouter `OfflineCore` au `Package.swift`. Implémenter UI download + intégration AVPlayer via `OfflineSchemeHandler`.
 - [ ] **Offline Android** : ajouter `offline-core-android` au `settings.gradle`. Implémenter UI download + ExoPlayer `OfflineAssetDataSource`.
 - [ ] **Offline RN** : `bun install` après vendor du module. `expo prebuild` puis `expo run:ios` / `run:android`. Wire `useOfflineAutoRefresh` au root layout. Wire `wipeAll` dans logout.
+- [ ] **Player natif RN (Pattern B)** : `Player.configure({ baseUrl, tokenProvider })` au boot. Remplacer `<WebView>` caché + bridge par `<NativePlayer>`. Câbler `Player.prefetch(ref)` sur `timeupdate`. Câbler `onMetrics` pour analytics.
 - [ ] **Tests sécurité offline** : confirmer (a) logout vide bien les downloads, (b) deviceId stable across reinstall, (c) license expire ne crashe pas le player.
 
 ---
 
-## 7. Renvois
+## 8. Renvois
 
 - Guide d'intégration principal : `docs/integration-guide.md`
-- API de référence SDK web : `@cyberscaling/secure-audio-stream-client` (npm)
+- API de référence SDK web : `@cyberscaling/secure-audio-stream-client` (npm) — inchangé pour les intégrations web
 - Architecture worker offline : `worker/src/routes/offline.ts` (vendoré dans MCP repo `modules/`)
 - Spec design offline : `docs/superpowers/specs/2026-05-12-mobile-offline-encrypted-design.md` (source repo)
+- Démo de référence RN (Pattern B natif) : `demos/react-native/` (vendoré dans MCP repo)

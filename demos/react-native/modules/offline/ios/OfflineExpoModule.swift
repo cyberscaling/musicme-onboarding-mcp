@@ -9,13 +9,33 @@ public class OfflineExpoModule: Module {
         Name("OfflineExpoModule")
 
         Events("offline:download:progress", "offline:download:complete",
-               "offline:download:error", "offline:license:expired")
+               "offline:download:error", "offline:license:expired",
+               "player:remote:next", "player:remote:prev")
 
         OnCreate {
             let libURL = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
             let root = libURL.appendingPathComponent("offline")
             self.service = try? OfflineService(rootDirectory: root)
             OfflineSingleton.shared.service = self.service
+        }
+
+        OnStartObserving("player:remote:next") { [weak self] in
+            NotificationCenter.default.addObserver(
+                forName: .nativePlayerRemoteNext, object: nil, queue: .main) { [weak self] _ in
+                self?.sendEvent("player:remote:next", [:])
+            }
+        }
+        OnStopObserving("player:remote:next") {
+            NotificationCenter.default.removeObserver(self, name: .nativePlayerRemoteNext, object: nil)
+        }
+        OnStartObserving("player:remote:prev") { [weak self] in
+            NotificationCenter.default.addObserver(
+                forName: .nativePlayerRemotePrev, object: nil, queue: .main) { [weak self] _ in
+                self?.sendEvent("player:remote:prev", [:])
+            }
+        }
+        OnStopObserving("player:remote:prev") {
+            NotificationCenter.default.removeObserver(self, name: .nativePlayerRemotePrev, object: nil)
         }
 
         AsyncFunction("ingestDownload") { (tmpPath: String, license: String, sizeBytes: Double, metaJson: String?) -> String in
@@ -64,20 +84,49 @@ public class OfflineExpoModule: Module {
             DeviceIdProvider.current()
         }
 
-        View(OfflineNativePlayer.self) {
-            Prop("trackId") { (view: OfflineNativePlayer, trackId: String) in
-                view.load(trackId: trackId)
+        AsyncFunction("configurePlayer") { (workerUrl: String, token: String) -> Void in
+            PlayerConfig.shared.workerUrl = URL(string: workerUrl)
+            PlayerConfig.shared.currentToken = token
+            PlayerConfig.shared.tokenProvider = { @Sendable in
+                PlayerConfig.shared.currentToken ?? ""
             }
-            Prop("autoPlay") { (view: OfflineNativePlayer, autoPlay: Bool) in
-                view.autoPlay = autoPlay
+        }
+
+        AsyncFunction("setStreamToken") { (token: String) -> Void in
+            PlayerConfig.shared.currentToken = token
+        }
+
+        AsyncFunction("prefetch") { (ref: [String: Int]) -> Void in
+            guard let cb = ref["cb"], let disc = ref["disc"], let track = ref["track"],
+                  let service = OfflineSingleton.shared.service,
+                  let workerUrl = PlayerConfig.shared.workerUrl,
+                  let tokenProvider = PlayerConfig.shared.tokenProvider
+            else { return }
+            let trackId = "\(cb):\(disc):\(track)"
+            let trackRef = StreamSession.TrackRef(cb: cb, disc: disc, track: track)
+            do {
+                let source = try service.openSource(
+                    ref: trackRef, workerUrl: workerUrl, tokenProvider: tokenProvider)
+                if let ss = source as? StreamSource { try await ss.prepare() }
+                _ = try? await source.read(range: 0..<min(256 * 1024, source.fileSize))
+                PrefetchCache.shared.put(trackId, source)
+            } catch {
+                // best-effort
             }
-            Prop("playing") { (view: OfflineNativePlayer, playing: Bool) in
-                view.setPlaying(playing)
+        }
+
+        View(NativePlayer.self) {
+            Prop("trackRef") { (view: NativePlayer, ref: [String: Int]) in
+                guard let cb = ref["cb"], let disc = ref["disc"], let track = ref["track"] else { return }
+                view.load(cb: cb, disc: disc, track: track)
             }
-            Prop("seekToMs") { (view: OfflineNativePlayer, seekToMs: Double?) in
-                if let ms = seekToMs { view.seek(toMs: ms) }
-            }
-            Events("onReady", "onError", "onPlay", "onPause", "onTimeUpdate", "onEnded")
+            Prop("title")    { (view: NativePlayer, t: String?) in view.trackTitle  = t }
+            Prop("artist")   { (view: NativePlayer, a: String?) in view.trackArtist = a }
+            Prop("coverUrl") { (view: NativePlayer, c: String?) in view.trackCoverUrl = c }
+            Prop("autoPlay") { (view: NativePlayer, ap: Bool) in view.autoPlay = ap }
+            Prop("playing") { (view: NativePlayer, p: Bool) in view.setPlaying(p) }
+            Prop("seekToMs") { (view: NativePlayer, t: Double?) in if let t = t { view.seek(toMs: t) } }
+            Events("onReady","onError","onPlay","onPause","onTimeUpdate","onEnded","onStalled","onSessionRotated","onMetrics")
         }
     }
 

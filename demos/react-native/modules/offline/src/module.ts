@@ -37,6 +37,18 @@ export const OfflineModule = {
     return native.getDeviceId()
   },
 
+  configurePlayer(workerUrl: string, token: string): Promise<void> {
+    return native.configurePlayer(workerUrl, token)
+  },
+
+  setStreamToken(token: string): Promise<void> {
+    return native.setStreamToken(token)
+  },
+
+  prefetch(ref: { cb: number; disc: number; track: number }): Promise<void> {
+    return native.prefetch(ref)
+  },
+
   emitter: new EventEmitter(native),
 
   addListener<T extends OfflineEvent['type']>(

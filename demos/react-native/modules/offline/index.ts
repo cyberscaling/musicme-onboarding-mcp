@@ -1,11 +1,11 @@
 export { OfflineModule } from './src/module'
 export { downloadTrack, refreshLicense, SubscriptionExpiredError } from './src/api'
-export { OfflineNativePlayer } from './src/OfflineNativePlayer'
-export type {
-  OfflineTrack,
-  OfflineEvent,
-} from './src/types'
+export { NativePlayer } from './src/NativePlayer'
+export { Player } from './src/Player'
+export { formatTrackRef } from './src/types'
+export type { NativePlayerProps } from './src/NativePlayer'
+export type { PlayerConfigureOptions, PlayerStatus } from './src/Player'
+export type { TrackRef, OfflineTrack, OfflineEvent } from './src/types'
 export type { DownloadOptions, RefreshOptions } from './src/api'
-export type { OfflineNativePlayerProps } from './src/OfflineNativePlayer'
 export { refreshExpiringLicenses } from './src/refresh'
 export type { RefreshAllOptions } from './src/refresh'
