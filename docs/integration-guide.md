@@ -215,7 +215,7 @@ Réponse :
   "mint_key_id": "01HX…",
   "mint_key_prefix": "sk_mint_<8 chars>",
   "jwks_url": "https://admin-stream.musicme.cc/api/jwks/mon-site",
-  "expected_iss": "https://admin-stream.musicme.cc",
+  "expected_iss": "https://admin-stream.musicme.cc/partners/mon-site",
   "expected_aud": "secure-audio-stream",
   "stream_url": "https://stream.musicme.cc",
   "admin_url": "https://admin-stream.musicme.cc",
@@ -965,7 +965,7 @@ Décodé :
 ```
 ```json
 {
-  "iss": "https://admin-stream.musicme.cc",
+  "iss": "https://admin-stream.musicme.cc/partners/mon-site",
   "sub": "user-42",
   "aud": "secure-audio-stream",
   "iat": 1778173600,
