@@ -940,6 +940,7 @@ Avant de pusher en prod :
 - [ ] HTTPS strict partout.
 - [ ] Smoke iOS : ouvre ton site sur un iPhone, joue un morceau. Si tu actives `metrics: { enabled: true }`, vérifie que `report.mode === 'mms'` sur iOS 17.1+ et `'blob'` sur iOS plus ancien.
 - [ ] Si tu cibles React Native : section §6.5.2 du présent guide. Pattern A (WebView) pour démarrer vite ; Pattern B (module natif `@demos/offline`) pour lock-screen + gapless + fiabilité Android.
+- [ ] (Optionnel) **Cast vers une TV / enceinte Google Cast** : Web Receiver CAF custom qui réutilise le SDK — voir le guide avancé `advanced-integration.md` §6 (Chromecast).
 
 Si tu coches tout, l'intégration est prête.
 

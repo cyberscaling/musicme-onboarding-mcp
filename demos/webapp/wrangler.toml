@@ -32,6 +32,9 @@ PARTNER_ID = "demo"
 # `iss` is set by setup; must match the URL the JWKS is published from so
 # that the stream worker can resolve the partner.
 ISS_OVERRIDE = ""
+# Google Cast receiver application id (Cast Developer Console). Empty = cast
+# button hidden in the SPA.
+CAST_APP_ID = ""
 
 # ──────────────────────────────────────────────────────────────────────────
 # DEV — Pierre@tech-leads.net (Cyberscaling). Uses the same R2/KV/Stream
@@ -59,6 +62,7 @@ PARTNER_ID = "demo"
 # request — keeps minted JWTs verifiable even when the SPA is loaded via the
 # *.workers.dev fallback.
 ISS_OVERRIDE = "https://demo-stream.tech-leads.cc"
+CAST_APP_ID = ""
 
 [env.dev.assets]
 directory = "./dist"

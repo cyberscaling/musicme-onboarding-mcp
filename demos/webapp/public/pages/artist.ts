@@ -3,12 +3,16 @@
  */
 import { catalog } from '../catalog'
 import { renderAlbumCard } from '../components/album-card'
+import { renderBioPanel } from '../components/bio-panel'
 import { renderTrackRow } from '../components/track-row'
 import { navigate } from '../router'
 
 function escapeHtml(s: string | undefined | null): string {
-  if (s == null) return ""
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+  if (s == null) return ''
+  return String(s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
+  )
 }
 
 export function artistPage(root: HTMLElement, id: number): void {
@@ -32,6 +36,7 @@ export function artistPage(root: HTMLElement, id: number): void {
         <h1 style="color:#eee; margin:0;">${escapeHtml(data.artist.name)}</h1>
         ${data.artist.bio ? `<p style="color:#bbb; margin-top:8px;">${escapeHtml(data.artist.bio)}</p>` : ''}
       `
+      header.appendChild(renderBioPanel(id, data.artist.name))
 
       const albumsEl = root.querySelector<HTMLElement>('#artist-albums')!
       for (const a of data.albums) albumsEl.appendChild(renderAlbumCard(a))

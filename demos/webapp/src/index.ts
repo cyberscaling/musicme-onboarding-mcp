@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import { authRoute } from './auth'
+import { bioRoute } from './bio'
+import { catalogRoute } from './catalog'
 import { jwksRoute } from './jwks'
 import { jwtRoute } from './jwt'
-import { catalogRoute } from './catalog'
 import { sonarRoute } from './sonar'
 import type { Env } from './types'
 
@@ -16,11 +17,13 @@ app.get('/api/config', (c) =>
     streamWorkerUrl: c.env.STREAM_WORKER_URL,
     partnerId: c.env.PARTNER_ID,
     jwtTtlSeconds: Number(c.env.JWT_TTL_SECONDS),
+    castAppId: c.env.CAST_APP_ID ?? '',
   }),
 )
 
 app.route('/api/auth', authRoute)
 app.route('/api/jwt', jwtRoute)
+app.route('/api/artist-bio', bioRoute)
 app.route('/api', sonarRoute)
 app.route('/api/catalog', catalogRoute)
 app.route('/.well-known', jwksRoute)

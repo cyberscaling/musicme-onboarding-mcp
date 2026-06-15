@@ -19,7 +19,7 @@ end-to-end, avec auth JWT côté backend.
 
 > Références canoniques :
 > - **Intégration de base** : <https://github.com/cyberscaling/musicme-onboarding-mcp/blob/main/docs/integration-guide.md> (signature JWT, MSE/Blob, troubleshooting CORS, etc.)
-> - **Features avancées** : <https://github.com/cyberscaling/musicme-onboarding-mcp/blob/main/docs/advanced-integration.md> (offline crypté mobile, prefetch, playlist dynamique, JWT `sub_exp`)
+> - **Features avancées** : <https://github.com/cyberscaling/musicme-onboarding-mcp/blob/main/docs/advanced-integration.md> (offline crypté mobile, prefetch, playlist dynamique, JWT `sub_exp`, Chromecast)
 >
 > Y renvoyer l'utilisateur quand un détail mérite lecture approfondie.
 

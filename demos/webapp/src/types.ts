@@ -9,6 +9,7 @@ export type Env = {
   STREAM_WORKER_URL: string
   PARTNER_ID: string
   ISS_OVERRIDE: string
+  CAST_APP_ID: string
 
   // Secrets
   RSA_PRIVATE_KEY_PEM?: string

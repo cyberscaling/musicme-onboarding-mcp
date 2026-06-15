@@ -13,6 +13,7 @@
 | **JWT `sub_exp`** | Clamp auto du TTL license offline sur la fin d'abo. 403 immédiat si expiré | 10 min côté backend partenaire | §3 |
 | **Offline encrypted** | Téléchargement + lecture sans réseau. iOS / Android / RN | 1-2 jours par plateforme | §4 |
 | **Player natif RN (Pattern B)** | Lock-screen + gapless + fiabilité Android. Remplace hidden WebView | 0.5-1 jour si déjà sur Pattern A | §5 |
+| **Chromecast** (Web Receiver CAF custom) | Cast l'audio sécurisé vers une TV / enceinte Google Cast. Réutilise le SDK web tel quel | 1-2 jours (web) + app Cast Console | §6 |
 
 Toutes les features se cumulent indépendamment — tu peux activer offline sans toucher au prefetch, etc.
 
@@ -607,7 +608,81 @@ Si tu ne veux pas faire la migration maintenant : **rien à changer**. Le chemin
 
 ---
 
-## 6. Quotas et coûts spécifiques aux features avancées
+## 6. Chromecast — cast vers une TV / enceinte
+
+Diffuser l'audio sécurisé sur un appareil Google Cast (Chromecast, Android TV,
+enceinte Nest, TV avec Chromecast intégré) via un **Web Receiver CAF custom**.
+
+### 6.1 Principe — pourquoi ça marche sans toucher au serveur
+
+Un Chromecast est un environnement Chrome. Le **même SDK web**
+`@cyberscaling/secure-audio-stream-client` (MSE + déchiffrement AES-CTR WebCrypto)
+tourne donc **tel quel** dans une page receiver hébergée sur ton site. Le receiver
+crée **sa propre** session `/init-stream` (sa clé, son empreinte IP+UA cohérente
+sur l'appareil cast) → le binding de session (§8 du guide principal) reste intact.
+**Zéro changement worker, zéro changement SDK.**
+
+Le cast « natif » (RemotePlayback / mirroring du tag `<audio>`) est volontairement
+désactivé : le receiver n'aurait pas la clé. C'est le receiver custom qui déchiffre.
+
+### 6.2 Les pièces
+
+| Pièce | Rôle |
+|---|---|
+| Page receiver (`cast.html` + bootstrap CAF) | Hébergée HTTPS sur ton site. Charge le framework CAF + ton receiver. |
+| `ReceiverController` | Enveloppe le `Playlist` SDK. Consomme les messages du sender, joue, renvoie le STATUS. |
+| Sender (bouton cast dans ton UI) | API Cast Web Sender (Chrome). Découvre l'appareil, lance le receiver, relaie un JWT + la file. |
+| Canal de messages custom | namespace `urn:x-cast:<ton-app>`. Messages JSON (cf. 6.4). |
+
+Code de référence complet : `demos/webapp/public/cast/` (receiver + protocole),
+`demos/webapp/public/cast-sender.ts` (sender), câblé dans la mini-barre
+`demos/webapp/public/components/mini-bar.ts`.
+
+### 6.3 Activer le cast — étapes partenaire
+
+1. **Enregistrer une app Custom Receiver** sur la [Google Cast SDK Developer Console](https://cast.google.com/publish) (compte Google, frais dev uniques). Receiver URL = ta page cast hébergée (ex. `https://ton-site/cast`). Tu obtiens un **Application ID** (8 hex).
+2. **Renseigner l'App ID** dans ta config (dans la démo : `CAST_APP_ID`, exposé au SPA via `/api/config`). Vide ⇒ bouton cast caché.
+3. **Dev** : enregistrer le **numéro de série** de l'appareil de test (onglet Devices) puis rebooter l'appareil. **Prod** : **publier** l'app receiver → tous les appareils Cast la lancent sans enregistrement.
+4. Le bouton cast apparaît dans ton lecteur → l'utilisateur sélectionne l'appareil → l'audio part sur la TV.
+
+⚠️ Cast = découverte **réseau local** (mDNS) : navigateur sender et appareil sur le **même Wi-Fi**. Navigateur **Chromium** requis (Chrome/Edge desktop, Chrome Android — pas Safari/Firefox).
+
+### 6.4 Protocole du canal
+
+- **Sender → receiver** : `LOAD` (token + items de file + `startId`/`positionSec`/`autoplay` optionnels), `PLAY`, `PAUSE`, `NEXT`, `PREV`, `SEEK`, `SET_TOKEN`, `STOP`.
+- **Receiver → sender** : `STATUS` (state/itemId/index/currentTime/duration/meta) et `ERROR`.
+
+Un seul `LOAD` « intelligent » gère tout : si `startId` == la piste en cours, le
+receiver **reconcilie** la file en place (édition de file sans redémarrage) ;
+sinon il charge la piste. `autoplay` reflète l'état de lecture (`false` = charge en pause).
+Le token JWT est rafraîchi périodiquement via `SET_TOKEN` (lecture longue).
+
+### 6.5 Lecture transparente une fois connecté
+
+Une fois connecté, **toutes** les intentions de lecture (clic sur une piste,
+play-album, saut dans la file, édition de file, next/prev/play-pause) sont routées
+vers le receiver — le lecteur local est mis en veille. À la connexion, la piste en
+cours + sa position partent sur l'appareil et **la lecture démarre automatiquement** ;
+à la déconnexion, la lecture reprend **en local à la même position** (en pause).
+Côté implémentation, tout transite par un point unique (le store de playlist) qui
+route vers le cast quand connecté — pas de logique cast éparpillée dans l'UI.
+
+### 6.6 Appareils contraints
+
+Les Chromecast / clés Android TV ont peu de mémoire : le SDK gère une **fenêtre
+glissante MSE** (backpressure + éviction du déjà-joué sur `QuotaExceededError`) et
+la session `/init-stream` voit son `exp` prolongé à chaque heartbeat — une piste
+longue sur un appareil contraint ne coupe donc pas. Rien à faire côté partenaire,
+c'est dans le SDK / le worker.
+
+### 6.7 Effort & deferred
+
+- **Effort** : ~1-2 j (page receiver + sender web) + enregistrement Cast Console (trivial).
+- **Deferred** : sender React Native (`react-native-google-cast`, rebuild natif) ; AirPlay (iOS — mécanisme distinct, lecture native re-streamée, pas de receiver custom possible).
+
+---
+
+## 7. Quotas et coûts spécifiques aux features avancées
 
 | Évènement | Compté comme play ? | Bandwidth | Notes |
 |---|---|---|---|
@@ -618,12 +693,13 @@ Si tu ne veux pas faire la migration maintenant : **rien à changer**. Le chemin
 | `downloadTrack` | Oui (1 play / ingest) | Ciphertext download | Compte au moment du download |
 | `refreshLicense` | Non | JWT round-trip | Gratuit |
 | Playback offline | Non | Lecture locale | Aucun trafic réseau |
+| Playback cast (receiver) | Oui (1 play / track) | Stream | Le receiver crée sa propre session `/init-stream` — compté comme un play normal |
 
 Ciphertext = `1.01x` du plaintext (overhead négligeable, ~16 bytes par AES block + headers).
 
 ---
 
-## 7. Checklist d'activation par feature
+## 8. Checklist d'activation par feature
 
 - [ ] **Prefetch web** : `prefetchAlbum` au mount page album. `prefetchSession` sur `timeupdate` quand `currentTime > duration - 5s`.
 - [ ] **Playlist dynamique** : remplacer le câblage `<audio>` ad-hoc par `Playlist` SDK. Câbler `onCurrentChange` pour ton UI now-playing.
@@ -633,10 +709,11 @@ Ciphertext = `1.01x` du plaintext (overhead négligeable, ~16 bytes par AES bloc
 - [ ] **Offline RN** : `bun install` après vendor du module. `expo prebuild` puis `expo run:ios` / `run:android`. Wire `useOfflineAutoRefresh` au root layout. Wire `wipeAll` dans logout.
 - [ ] **Player natif RN (Pattern B)** : `Player.configure({ baseUrl, tokenProvider })` au boot. Remplacer `<WebView>` caché + bridge par `<NativePlayer>`. Câbler `Player.prefetch(ref)` sur `timeupdate`. Câbler `onMetrics` pour analytics.
 - [ ] **Tests sécurité offline** : confirmer (a) logout vide bien les downloads, (b) deviceId stable across reinstall, (c) license expire ne crashe pas le player.
+- [ ] **Chromecast** : enregistrer (puis publier) l'app Custom Receiver sur la Cast Console, héberger la page receiver en HTTPS, renseigner `CAST_APP_ID`, câbler le bouton cast au sender. Tester sur appareil réel (même Wi-Fi, navigateur Chromium).
 
 ---
 
-## 8. Renvois
+## 9. Renvois
 
 - Guide d'intégration principal : `docs/integration-guide.md`
 - API de référence SDK web : `@cyberscaling/secure-audio-stream-client` (npm) — inchangé pour les intégrations web

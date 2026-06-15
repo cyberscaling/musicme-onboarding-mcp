@@ -18,7 +18,10 @@ export default defineConfig({
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve(__dirname, 'public/index.html'),
+      input: {
+        index: resolve(__dirname, 'public/index.html'),
+        cast: resolve(__dirname, 'public/cast.html'),
+      },
     },
   },
 })

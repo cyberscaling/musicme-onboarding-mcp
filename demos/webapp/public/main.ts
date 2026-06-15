@@ -1,4 +1,5 @@
 import { ApiError, api, type Me } from './api'
+import { getCastStore } from './cast-sender'
 import { mountMiniBar } from './components/mini-bar'
 import { mountQueuePanel } from './components/queue-panel'
 import { mountTopNav, setTopNavUser } from './components/top-nav'
@@ -46,6 +47,9 @@ async function ensurePlaylistStoreReady(): Promise<void> {
     playlistStore.init(audio, cfg.streamWorkerUrl, async () => (await api.mintJwt()).token)
     mountMiniBar(document.getElementById('player-bar') as HTMLElement)
     mountQueuePanel(document.getElementById('queue-panel') as HTMLElement)
+    if (cfg.castAppId) {
+      void getCastStore().init(cfg.castAppId, cfg.jwtTtlSeconds)
+    }
   })()
   return playlistStoreReady
 }

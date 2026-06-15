@@ -2,7 +2,7 @@
 
 Ce document propose **6 prompts de base** (intégration streaming standard) +
 **1 prompt avancé optionnel** (offline crypté, prefetch, playlist dynamique,
-JWT `sub_exp`) à exécuter dans l'ordre, dans Claude Code (ou Cursor / autre
+JWT `sub_exp`, Chromecast) à exécuter dans l'ordre, dans Claude Code (ou Cursor / autre
 client agent), pour intégrer le streaming audio musicme dans un site existant.
 Chaque prompt est conçu pour une exécution **autonome** par l'agent, avec des
 questions à l'utilisateur **uniquement** quand l'audit ne peut pas conclure.
@@ -33,7 +33,7 @@ questions à l'utilisateur **uniquement** quand l'audit ne peut pas conclure.
 | 4 | **Planning** | Test cases concrets + ordre d'exécution | 2–5 min |
 | 5 | **Implémentation** | Code + tests verts à chaque étape | 30–120 min |
 | 6 | **Documentation finale** | Runbook + plan de tests à valider par l'humain | 5–10 min |
-| 7 (opt) | **Features avancées** | Prefetch, playlist dynamique, offline crypté, `sub_exp` | 1–8h selon scope |
+| 7 (opt) | **Features avancées** | Prefetch, playlist dynamique, offline crypté, `sub_exp`, Chromecast | 1–8h selon scope |
 
 À la fin (phase 6) : intégration fonctionnelle, plan de tests à dérouler par
 l'humain pour valider en bout de chaîne, et documentation persistante.
@@ -372,6 +372,9 @@ que le partenaire veut activer une ou plusieurs features avancées :
   lock-screen + gapless + fiabilité Android. Remplace la WebView cachée
   par `NativePlayer` + `Player` singleton (module vendoré `@demos/offline`).
   Cf `docs/integration-guide.md` §6.5.B et `docs/advanced-integration.md` §4.3 + §5.
+- **Chromecast** — cast vers une TV / enceinte Google Cast via un Web Receiver
+  CAF custom qui réutilise le SDK web. Démo : `demos/webapp/public/cast/`.
+  Cf `docs/advanced-integration.md` §6.
 
 Référence canonique : `docs/advanced-integration.md` dans ce repo.
 
