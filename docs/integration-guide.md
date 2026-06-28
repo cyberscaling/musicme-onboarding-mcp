@@ -223,7 +223,7 @@ Réponse :
 }
 ```
 
-⚠️ **Le champ `mint_key` n'apparaîtra plus jamais.** Avant que tu fasses la moindre autre chose, copie-le dans ton gestionnaire de secrets (1Password, Vault, AWS Secrets Manager, GCP Secret Manager, etc.) sous le label `MUSICME_MINT_KEY`. Si tu le perds, il faut révoquer + en re-mint un autre côté opérateur musicme.
+⚠️ **Le champ `mint_key` n'apparaîtra plus jamais.** Avant que tu fasses la moindre autre chose, copie-le dans ton gestionnaire de secrets (1Password, Vault, AWS Secrets Manager, GCP Secret Manager, etc.) sous le label `MUSICME_MINT_KEY`. Si tu le perds, re-mint une nouvelle clé toi-même depuis le portail partenaire (§5.4) si tu y as accès, sinon côté opérateur musicme.
 
 **Vérification**
 
@@ -281,6 +281,29 @@ Le résultat est identique au flux 5.1.
 | `MINT_KEY` | `sk_mint_…` (~70 chars) | dans tes envvars (`MINT_KEY`), **jamais en dur dans le code** |
 | URL admin | `https://admin-stream.musicme.cc` | constante |
 | URL stream | `https://stream.musicme.cc` | constante |
+
+### 5.4 Portail partenaire self-service
+
+Une fois ton partenaire créé, un administrateur musicme peut t'inviter sur le
+**portail partenaire** : il ajoute ton email côté admin, et tu reçois un **lien
+magique** (magic-link) de connexion. Tu te connectes alors sur
+<https://admin-stream.musicme.cc/portal/keys> et tu gères toi-même, sans
+solliciter l'opérateur musicme :
+
+- **Clés de mint** : re-mint d'une nouvelle `MINT_KEY` (la nouvelle clé est
+  affichée **une seule fois** — copie-la immédiatement, elle n'est jamais
+  ré-affichée), liste des clés actives, et révocation. Le re-mint est
+  **additif** : il ne touche pas tes clés existantes, ce qui permet une
+  rotation sans coupure (déploie la neuve, teste, puis révoque l'ancienne).
+- **Origines autorisées** : édite ta liste `allowed_origins` (prod / staging /
+  loopback) sans passer par le MCP.
+- **Intégration** : tes paramètres en lecture seule (`partner_id`,
+  `expected_iss`/`aud`, `stream_url`, `jwks_url`) + un snippet de mint backend
+  prêt à copier.
+
+L'accès est strictement limité à **ton** partenaire ; tu ne vois jamais les
+données d'un autre. C'est l'alternative au MCP pour la gestion courante des
+clés une fois l'onboarding fait.
 
 ---
 
@@ -882,7 +905,7 @@ Pour une app **Kotlin native pure** (sans React Native), voir `demos/react-nativ
 | Symptôme | Cause probable | Fix |
 |---|---|---|
 | `mint failed: HTTP 401 missing_mint_key` | Header `X-Mint-Key` absent ou vide | Vérifie l'envvar ; vérifie que le fetch ne réécrit pas les headers. |
-| `mint failed: HTTP 401 invalid_mint_key` | Mauvaise clé, ou clé révoquée | Demande à l'opérateur musicme de re-mint une clé. |
+| `mint failed: HTTP 401 invalid_mint_key` | Mauvaise clé, ou clé révoquée | Re-mint une clé toi-même depuis le portail (§5.4), ou demande à l'opérateur musicme. |
 | `mint failed: HTTP 403 ip_not_allowed` | IP du serveur backend pas dans `INTERNAL_MINT_CIDRS` | Donne ton IP statique à l'opérateur musicme. En dev, configurer `DEV_AUTH_BYPASS=1` côté admin (jamais en prod). |
 | `mint failed: HTTP 400 partner_not_in_managed_mode` | Partenaire en mode `jwks` côté admin | L'opérateur musicme doit faire `POST /api/admin/keys/<id>/rotate`. |
 | `mint failed: HTTP 500 no_active_key` | Aucune clé active pour ton partenaire | L'opérateur musicme doit faire un `rotate` initial pour créer la première paire. |
