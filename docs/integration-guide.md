@@ -861,6 +861,58 @@ Pour une app **Kotlin native pure** (sans React Native), voir `demos/react-nativ
 
 **Note Pattern A / Android :** le processus Chromium sandboxé de la WebView peut être évincé par l'OOM killer sans que RN soit notifié. Le Pattern B élimine cette dépendance.
 
+### 6.6 Mode offline — API HTTP (référence)
+
+Le module natif (§6.5.2) gère tout ça pour toi. Cette section documente l'API brute pour les intégrations sans module, et pour comprendre le cycle de vie des licences.
+
+Trois endpoints, tous sous `STREAM_URL`. `trackId` a le format `"<cb>:<disc>:<track>"` (ex. `"5400863209100:1:2"`).
+
+```http
+# 1. Obtenir une licence + télécharger le ciphertext (premier download)
+POST https://stream.musicme.cc/offline/license
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{ "trackId": "5400863209100:1:2", "deviceId": "<id stable de l'appareil>" }
+
+→ 200
+{
+  "license": "<JWT HS256 signé>",
+  "ciphertextUrl": "/offline/blob/…?deviceId=…&exp=…&sig=…",
+  "sizeBytes": 2193949
+}
+```
+
+- `license` est un JWT signé dont le payload (décodable côté client, non chiffré) contient : `trackId`, `deviceId`, `userId`, `key` (base64, 32 octets), `iv` (base64, 16 octets), `exp`, `iat`, `v: "offline-v1"`.
+- `ciphertextUrl` est une URL signée **courte durée (10 min)** — télécharge le blob tout de suite. `Range` supporté (mêmes en-têtes `X-Counter-Start` / `X-Skip-Bytes` qu'en §6.4).
+- Le ciphertext est chiffré AES-256-CTR avec la `key`/`iv` de la licence — même algo de déchiffrement qu'en §6.4.
+
+```http
+# 2. Renouveler une licence expirée ou proche d'expirer (PAS de re-download)
+POST https://stream.musicme.cc/offline/license-refresh
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{ "trackId": "5400863209100:1:2", "deviceId": "<même deviceId>" }
+
+→ 200
+{ "license": "<nouveau JWT>" }
+```
+
+**Garantie clé/iv stable :** la `key` et l'`iv` sont dérivées de façon déterministe (HKDF) à partir du track — **le même `trackId` redonne toujours la même paire key/iv**, quel que soit le `deviceId` ou l'utilisateur. Un refresh de licence ne nécessite donc **jamais** de re-télécharger le ciphertext : le blob stocké localement reste déchiffrable avec chaque nouvelle licence. Utilise `/offline/license-refresh` (et pas `/offline/license`) pour ce cas : il saute le HEAD upstream et ne renvoie pas de `ciphertextUrl` — plus rapide.
+
+**Durée de vie des licences :** TTL par défaut 30 jours, **clampé à `sub_exp`** si ton JWT de mint porte cette claim (abonnement) — la licence n'excède jamais la fin d'abonnement de l'utilisateur. Stratégie recommandée (celle du module natif) : au lancement de l'app avec réseau, rafraîchir toutes les licences qui expirent sous 7 jours.
+
+**Erreurs :**
+
+| Code | Cause | Action client |
+|---|---|---|
+| `401` | JWT absent / invalide | re-minter un token |
+| `400 invalid_track_id` | format ≠ `cb:disc:track` | corriger l'identifiant |
+| `403 subscription_expired` | `sub_exp` du JWT ≤ maintenant | l'abonnement de l'utilisateur est terminé |
+| `404 track_not_found` | `(cb, disc, track)` inconnu | vérifier le catalogue |
+| `403 invalid_sig` / `410 sig_expired` (blob) | URL signée altérée / > 10 min | re-demander une licence via `/offline/license` |
+
 ---
 
 ## 7. Récap des paramètres à fournir aux humains chez toi
@@ -1080,4 +1132,4 @@ Avec ces ~70 lignes de code, l'intégration est faite.
 
 ---
 
-*Dernière mise à jour : 2026-05-14 — §6.5.2 Pattern B (module natif RN `@demos/offline` — AVPlayer/ExoPlayer, lock-screen intégré, gapless prefetch, métriques). Pattern A (WebView) conservé comme alternative documentée. En cas de doute, contacter l'opérateur musicme (`support@musicme.cc`).*
+*Dernière mise à jour : 2026-07-09 — §6.6 API offline (`/offline/license`, `/offline/license-refresh`, `/offline/blob` — garantie key/iv stable par track, refresh sans re-download). 2026-05-14 : §6.5.2 Pattern B (module natif RN `@demos/offline`). En cas de doute, contacter l'opérateur musicme (`support@musicme.cc`).*
