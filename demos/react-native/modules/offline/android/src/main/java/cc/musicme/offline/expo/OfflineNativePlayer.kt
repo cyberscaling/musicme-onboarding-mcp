@@ -55,7 +55,7 @@ class NativePlayer(context: Context, appContext: AppContext) : ExpoView(context,
         }
     }
 
-    fun load(cb: Int, disc: Int, track: Int) {
+    fun load(cb: Long, disc: Int, track: Int) {
         val svc = OfflineSingleton.service ?: run {
             onError(mapOf("message" to "player_not_configured"))
             return

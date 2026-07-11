@@ -91,10 +91,11 @@ class OfflineExpoModule : Module() {
             PlayerConfig.currentToken = token
         }
 
-        AsyncFunction("prefetch") { ref: Map<String, Int> ->
-            val cb = ref["cb"] ?: return@AsyncFunction
-            val disc = ref["disc"] ?: 0
-            val track = ref["track"] ?: 0
+        // JS numbers arrive as Double; cb is an EAN-13 barcode that overflows Int.
+        AsyncFunction("prefetch") { ref: Map<String, Double> ->
+            val cb = ref["cb"]?.toLong() ?: return@AsyncFunction
+            val disc = ref["disc"]?.toInt() ?: 0
+            val track = ref["track"]?.toInt() ?: 0
             val svc = service ?: return@AsyncFunction
             val workerUrl = PlayerConfig.workerUrl ?: return@AsyncFunction
             val tokenProvider = PlayerConfig.tokenProvider ?: return@AsyncFunction
@@ -112,10 +113,10 @@ class OfflineExpoModule : Module() {
         }
 
         View(NativePlayer::class) {
-            Prop("trackRef") { view: NativePlayer, ref: Map<String, Int> ->
-                val cb = ref["cb"] ?: return@Prop
-                val disc = ref["disc"] ?: 0
-                val track = ref["track"] ?: 0
+            Prop("trackRef") { view: NativePlayer, ref: Map<String, Double> ->
+                val cb = ref["cb"]?.toLong() ?: return@Prop
+                val disc = ref["disc"]?.toInt() ?: 0
+                val track = ref["track"]?.toInt() ?: 0
                 view.load(cb, disc, track)
             }
             Prop("title")    { view: NativePlayer, t: String? -> view.trackTitle = t }
