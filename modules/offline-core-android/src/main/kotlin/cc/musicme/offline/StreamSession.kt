@@ -10,7 +10,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.Base64
 
-data class TrackRef(val cb: Int, val disc: Int, val track: Int)
+data class TrackRef(val cb: Long, val disc: Int, val track: Int)
 
 data class SessionMetrics(
     val bootstrapMs: Double?,
@@ -48,10 +48,13 @@ class StreamSession(
     )
 
     suspend fun bootstrap(): Bootstrap {
-        mutex.withLock { cached }?.let { return it }
-        val b = runBootstrap(allowRetry = true)
-        mutex.withLock { cached = b }
-        return b
+        cached?.let { return it }
+        // Single-flight: only one bootstrap at a time. Concurrent callers wait on the
+        // mutex then read the fresh cache (re-check inside the lock). Prevents the
+        // double-bootstrap that leaked an /init-stream session server-side.
+        return mutex.withLock {
+            cached ?: runBootstrap(allowRetry = true).also { cached = it }
+        }
     }
 
     suspend fun read(start: Long, endExclusive: Long): ByteArray {
@@ -176,8 +179,16 @@ class StreamSession(
                                 else -> {
                                     val cipher = r.body!!.bytes()
                                     if (firstRangeMs == null) firstRangeMs = (System.nanoTime() - tStart) / 1_000_000.0
-                                    val skip = r.header("X-Skip-Bytes")?.toInt() ?: 0
-                                    val counter = r.header("X-Counter-Start")?.toInt() ?: (aligned / 16).toInt()
+                                    // Always request from `aligned` (16-aligned): the server serves
+                                    // [aligned..endInclusive], so the decrypted plaintext maps to that
+                                    // same range. To return [start..endExclusive) we must drop the first
+                                    // `start-aligned` bytes. The server's X-Skip-Bytes header is always 0
+                                    // (it serves from the requested range), so we compute the skip
+                                    // locally. The CTR counter is aligned/16 (the 16-byte block number
+                                    // containing `aligned`). The web SDK avoided the bug by only ever
+                                    // requesting 16-aligned starts (256 KiB chunks).
+                                    val skip = (start - aligned).toInt()
+                                    val counter = (aligned / 16).toInt()
                                     val tDec = System.nanoTime()
                                     val plain = AESCTRDecryptor.decrypt(cipher, boot.key, boot.iv, counter)
                                     if (firstDecryptMs == null) firstDecryptMs = (System.nanoTime() - tDec) / 1_000_000.0
