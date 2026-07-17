@@ -64,6 +64,53 @@ class LicenseClaimsTest {
         }
     }
 
+    @Test
+    fun decodesBase64UrlKeyAndIv() {
+        // Bytes chosen so the standard-alphabet encoding contains '+' and '/';
+        // re-encoded url-safe unpadded. The decoder must accept both alphabets.
+        val keyBytes = ByteArray(32) { 0xFB.toByte() }
+        val ivBytes = ByteArray(16) { 0xFE.toByte() }
+        val body = JSONObject().apply {
+            put("trackId", "100:0:5")
+            put("mid", 12345)
+            put("deviceId", "d1")
+            put("userId", "user-1")
+            put("key", base64Url(keyBytes))
+            put("iv", base64Url(ivBytes))
+            put("exp", 2)
+            put("iat", 1)
+            put("v", "offline-v1")
+        }
+        val header = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+        val jwt = "$header.${base64Url(body.toString().toByteArray(StandardCharsets.UTF_8))}.sig"
+        val claims = LicenseClaims.decode(jwt)
+        assertArrayEquals(keyBytes, claims.key)
+        assertArrayEquals(ivBytes, claims.iv)
+    }
+
+    @Test
+    fun rejectsInvalidBase64Key() {
+        val body = JSONObject().apply {
+            put("trackId", "x")
+            put("mid", 1)
+            put("deviceId", "d")
+            put("userId", "u")
+            put("key", "!!!not-base64!!!")
+            put("iv", Base64.getEncoder().encodeToString(ByteArray(16)))
+            put("exp", 2)
+            put("iat", 1)
+            put("v", "offline-v1")
+        }
+        val header = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+        val jwt = "$header.${base64Url(body.toString().toByteArray(StandardCharsets.UTF_8))}.sig"
+        try {
+            LicenseClaims.decode(jwt)
+            fail("should throw")
+        } catch (e: OfflineError) {
+            assertEquals(OfflineError.MalformedLicense, e)
+        }
+    }
+
     private fun sampleJwt(): String {
         val iat = 1_777_000_000L
         val exp = iat + 2_592_000L

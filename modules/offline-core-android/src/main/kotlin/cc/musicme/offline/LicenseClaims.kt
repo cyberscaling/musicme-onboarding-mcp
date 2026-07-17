@@ -1,8 +1,8 @@
 package cc.musicme.offline
 
+import okio.ByteString.Companion.decodeBase64
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
-import java.util.Base64
 
 data class LicenseClaims(
     val trackId: String,
@@ -44,8 +44,10 @@ data class LicenseClaims(
                 val iat = json.getLong("iat")
                 val v = json.getString("v")
 
-                val key = Base64.getDecoder().decode(keyB64)
-                val iv = Base64.getDecoder().decode(ivB64)
+                val key = keyB64.decodeBase64()?.toByteArray()
+                    ?: throw OfflineError.MalformedLicense
+                val iv = ivB64.decodeBase64()?.toByteArray()
+                    ?: throw OfflineError.MalformedLicense
                 if (key.size != 32) throw OfflineError.MalformedLicense
                 if (iv.size != 16) throw OfflineError.MalformedLicense
                 if (v != SUPPORTED_VERSION) throw OfflineError.UnsupportedLicenseVersion
@@ -60,12 +62,8 @@ data class LicenseClaims(
     }
 }
 
-internal fun base64UrlDecode(input: String): ByteArray {
-    val padded = input.replace('-', '+').replace('_', '/').let {
-        when (it.length % 4) {
-            0 -> it
-            else -> it + "=".repeat(4 - it.length % 4)
-        }
-    }
-    return Base64.getDecoder().decode(padded)
-}
+// okio's decodeBase64 accepts both the standard and url-safe alphabets, padded
+// or not — and unlike java.util.Base64 it exists on every Android API level
+// (java.util.Base64 is API 26+; the module supports minSdk 24 / Android 7).
+internal fun base64UrlDecode(input: String): ByteArray =
+    input.decodeBase64()?.toByteArray() ?: throw IllegalArgumentException("invalid base64: $input")

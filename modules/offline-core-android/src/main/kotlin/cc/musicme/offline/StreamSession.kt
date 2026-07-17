@@ -8,7 +8,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.Base64
+import okio.ByteString.Companion.decodeBase64
 
 data class TrackRef(val cb: Long, val disc: Int, val track: Int)
 
@@ -146,8 +146,8 @@ class StreamSession(
             return Bootstrap(
                 sessionId = str("sessionId"),
                 fileSize = long("fileSize"),
-                key = Base64.getDecoder().decode(str("keyB64")),
-                iv = Base64.getDecoder().decode(str("ivB64")),
+                key = str("keyB64").decodeBase64()?.toByteArray() ?: error("bad keyB64"),
+                iv = str("ivB64").decodeBase64()?.toByteArray() ?: error("bad ivB64"),
                 contentType = str("contentType"),
             )
         } catch (e: Exception) {
