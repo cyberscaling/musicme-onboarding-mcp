@@ -87,7 +87,7 @@ Pour les UX "lecture en file" (radio, suite d'album, queue partagée), le SDK ex
 import { Playlist } from '@cyberscaling/secure-audio-stream-client'
 
 const playlist = new Playlist({
-  workerUrl: 'https://stream.musicme.cc',
+  workerUrl: 'https://secure-stream.musicme.com',
   getToken: async () => (await fetch('/api/player-token', { credentials: 'include' })).json().then(j => j.token),
   audioElement: document.getElementById('player') as HTMLAudioElement,
   items: [
@@ -311,7 +311,7 @@ import { Player } from '@demos/offline'
 // tokenProvider est un callback qui retourne un JWT frais (le Player
 // le rafraîchit automatiquement toutes les 4 minutes).
 Player.configure({
-  baseUrl: 'https://stream.musicme.cc',
+  baseUrl: 'https://secure-stream.musicme.com',
   tokenProvider: async () => {
     const { token } = await fetch('/api/player-token', { method: 'POST', credentials: 'include' }).then(r => r.json())
     return token
@@ -382,7 +382,7 @@ import {
 
 // Download
 await downloadTrack({
-  baseUrl: 'https://stream.musicme.cc',
+  baseUrl: 'https://secure-stream.musicme.com',
   jwt: '<auth JWT>',
   deviceId: await OfflineModule.getDeviceId(),
   trackId: '5400863209100:1:3',
