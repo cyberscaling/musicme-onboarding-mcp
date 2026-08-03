@@ -89,7 +89,7 @@ Tu dois connaître par cœur ces faits pour ne pas surcharger le contexte:
 
 | Rôle | URL |
 |---|---|
-| Stream worker | `https://stream.musicme.cc` |
+| Stream worker | `https://secure-stream.musicme.com` |
 | Admin worker | `https://admin-stream.musicme.cc` |
 | Demo (test) | `https://demo-stream.musicme.cc` |
 
@@ -188,7 +188,7 @@ import { Player } from '@demos/offline'
 
 // Une seule fois au boot (dans _layout.tsx ou App.tsx) :
 Player.configure({
-  baseUrl: 'https://stream.musicme.cc',
+  baseUrl: 'https://secure-stream.musicme.com',
   tokenProvider: async () => {
     const { token } = await fetch('/api/player-token', { method: 'POST', credentials: 'include' }).then(r => r.json())
     return token

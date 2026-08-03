@@ -11,7 +11,7 @@ declare namespace Cloudflare {
 		DEMO_USERS: "alice:wonderland,bob:builder";
 		JWT_TTL_SECONDS: "3600";
 		SESSION_TTL_SECONDS: "43200";
-		STREAM_WORKER_URL: "https://stream.musicme.cc";
+		STREAM_WORKER_URL: "https://secure-stream.musicme.com";
 		PARTNER_ID: "demo";
 		ISS_OVERRIDE: "https://demo-stream.musicme.cc";
 	}

@@ -13,7 +13,7 @@ import { downloadTrack, OfflineModule, OfflineNativePlayer } from '@demos/offlin
 const deviceId = await OfflineModule.getDeviceId()
 
 await downloadTrack({
-  baseUrl: 'https://stream.musicme.cc',
+  baseUrl: 'https://secure-stream.musicme.com',
   jwt: '<bearer>',
   trackId: '5400863209100:1:1',
   deviceId,

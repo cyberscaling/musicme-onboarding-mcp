@@ -95,7 +95,7 @@ Three response conventions (raw / aliased / flatten — see `docs/musicme-api.md
 - **Bun 1.3+** (package manager + runtime)
 - **Wrangler 4.x** (`bun x wrangler --version`)
 - **Cloudflare account** with Workers + KV access
-- A **partner record** registered on the stream worker (`stream.musicme.cc` or your own deployment). Use the MCP onboarding flow (`musicme-onboarding-mcp` repo) or have Pierre create it. You need :
+- A **partner record** registered on the stream worker (`secure-stream.musicme.com` or your own deployment). Use the MCP onboarding flow (`musicme-onboarding-mcp` repo) or have Pierre create it. You need :
   - a `partner_id` (e.g. `demo`)
   - a `jwks_url` (e.g. `https://your-webapp.workers.dev/.well-known/jwks.json`)
   - allowed origins matching where you'll serve the webapp
@@ -124,7 +124,7 @@ Open `wrangler.toml` and adjust for your environment (the file ships with a `dev
 account_id = "<YOUR_CLOUDFLARE_ACCOUNT_ID>"   # find via `bun x wrangler whoami`
 
 [env.dev.vars]
-STREAM_WORKER_URL = "https://stream.musicme.cc"          # or your own stream-worker
+STREAM_WORKER_URL = "https://secure-stream.musicme.com"          # or your own stream-worker
 PARTNER_ID         = "demo"                              # must match your partner record
 ISS_OVERRIDE       = ""                                  # leave empty → uses worker URL
 
