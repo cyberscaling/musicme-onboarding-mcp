@@ -10,7 +10,7 @@ Ce document s'adresse à un développeur qui veut **streamer la musique de notre
 
 1. L'opérateur musicme te transmet une **clé d'onboarding** (`ONBOARDING_API_KEY`). Tu installes notre **MCP server** dans ton éditeur (Claude Code, Cursor, Claude Desktop) avec cette clé en variable d'environnement, puis tu demandes à l'agent : *« registre un nouveau partenaire `mon-site` avec origin `https://www.mon-site.fr` »*. L'agent appelle l'API d'onboarding et te renvoie une **clé de mint** (`MINT_KEY`) à stocker **immédiatement** dans ton gestionnaire de secrets — elle ne s'affichera jamais plus.
 2. Côté **ton backend** (Node, PHP, Python, peu importe), tu fais un appel HTTP à notre serveur `admin-stream.musicme.cc` pour échanger la `MINT_KEY` contre un **JWT** (jeton court, 5 minutes de durée de vie).
-3. Côté **ton frontend** (la page web où le lecteur tourne), tu prends ce JWT et tu l'envoies au serveur de streaming `stream.musicme.cc` qui te retourne un identifiant de session + une URL de stream + une URL de clé.
+3. Côté **ton frontend** (la page web où le lecteur tourne), tu prends ce JWT et tu l'envoies au serveur de streaming `secure-stream.musicme.com` qui te retourne un identifiant de session + une URL de stream + une URL de clé.
 4. Ton lecteur **télécharge l'audio chiffré** depuis l'URL de stream, **récupère la clé** depuis l'URL de clé, **déchiffre** au vol et joue. Tu n'as pas à écrire la partie crypto : on fournit un SDK JavaScript prêt à l'emploi.
 
 Total : 1 endpoint HTTP côté backend + ~10 lignes de code côté frontend. L'onboarding lui-même prend ~2 minutes via le MCP.
@@ -31,7 +31,7 @@ On utilise pour ça trois mécanismes :
 
 1. **Authentification du partenaire** par signature cryptographique (≈ "carte d'identité numérique").
 2. **Chiffrement du flux audio** : les octets envoyés au navigateur sont aléatoires sans la clé, et la clé n'est délivrée qu'à un navigateur qui présente une session valide.
-3. **Empreinte de session** (IP + user-agent) : on fait un peu plus que vérifier la session, on vérifie que c'est le **même** utilisateur qui consomme la session.
+3. **Empreinte de session** (user-agent) : on vérifie que c'est le **même** client qui consomme la session. L'adresse IP n'est volontairement **pas** liée à la session — les réseaux mobiles (CGNAT, bascule 4G↔wifi) changent d'IP en cours de lecture.
 
 Tu n'as à t'occuper que du point 1 — l'auth. Les points 2 et 3 sont gérés par notre infra et par le SDK.
 
@@ -78,7 +78,7 @@ Si un attaquant vole un JWT en transit, il peut écouter **un seul morceau penda
 │  │ Frontend  │── 3. init ───▶│─────────┼─────────┐      │ (managée)       │
 │  │ (lecteur) │   Bearer JWT  │         │         ▼      │                 │
 │  │           │◀── streamUrl ─│         │   ┌────────────┴─────────────┐   │
-│  │           │   keyUrl      │         │   │  stream.musicme.cc       │   │
+│  │           │   keyUrl      │         │   │  secure-stream.musicme.com       │   │
 │  │           │── 4. /stream─▶│─────────┼──▶│  /init-stream            │   │
 │  │           │   /key        │         │   │  /stream/<sid>           │   │
 │  │           │◀── octets ────│         │   │  /key/<sid>              │   │
@@ -142,7 +142,7 @@ Trois propriétés importantes :
 
 1. La **clé de mint** (`X-Mint-Key`) ne sort **jamais** de ton serveur. Elle ne doit pas atterrir dans le navigateur, dans Git, dans les logs.
 2. Le JWT est **lié à un utilisateur** (`sub`) et **court** (par défaut 300 secondes). Si un client le vole, il peut écouter pendant 5 minutes maximum, pour ce seul utilisateur.
-3. Le JWT contient l'identité du partenaire (`iss`) — c'est ce qui permet à `stream.musicme.cc` de retrouver ta clé publique et de vérifier la signature.
+3. Le JWT contient l'identité du partenaire (`iss`) — c'est ce qui permet à `secure-stream.musicme.com` de retrouver ta clé publique et de vérifier la signature.
 
 ---
 
@@ -217,7 +217,7 @@ Réponse :
   "jwks_url": "https://admin-stream.musicme.cc/api/jwks/mon-site",
   "expected_iss": "https://admin-stream.musicme.cc/partners/mon-site",
   "expected_aud": "secure-audio-stream",
-  "stream_url": "https://stream.musicme.cc",
+  "stream_url": "https://secure-stream.musicme.com",
   "admin_url": "https://admin-stream.musicme.cc",
   "kid": "key_<…>"
 }
@@ -280,7 +280,7 @@ Le résultat est identique au flux 5.1.
 | `partnerId` | `mon-site` | dans tes envvars (`PARTNER_ID`) |
 | `MINT_KEY` | `sk_mint_…` (~70 chars) | dans tes envvars (`MINT_KEY`), **jamais en dur dans le code** |
 | URL admin | `https://admin-stream.musicme.cc` | constante |
-| URL stream | `https://stream.musicme.cc` | constante |
+| URL stream | `https://secure-stream.musicme.com` | constante |
 
 ### 5.4 Portail partenaire self-service
 
@@ -417,7 +417,7 @@ Usage :
 // frontend/src/player.ts
 import { SecureAudioPlayer } from '@cyberscaling/secure-audio-stream-client'
 
-const STREAM_URL = 'https://stream.musicme.cc'
+const STREAM_URL = 'https://secure-stream.musicme.com'
 
 const player = new SecureAudioPlayer({
   workerUrl: STREAM_URL,
@@ -525,7 +525,7 @@ Pour les contextes "lecture en file" (radio, suite d'album, queue partagée), le
 import { Playlist } from '@cyberscaling/secure-audio-stream-client'
 
 const playlist = new Playlist({
-  workerUrl: 'https://stream.musicme.cc',
+  workerUrl: 'https://secure-stream.musicme.com',
   getToken: async () => (await fetch('/api/player-token', { credentials: 'include' })).json().then(j => j.token),
   audioElement: document.getElementById('player') as HTMLAudioElement,
   items: [
@@ -587,7 +587,7 @@ Si tu ne peux pas utiliser le SDK (autre langage, environnement non-web), voici 
 
 ```http
 # 1. /init-stream
-POST https://stream.musicme.cc/init-stream
+POST https://secure-stream.musicme.com/init-stream
 Authorization: Bearer <JWT>
 Content-Type: application/json
 
@@ -606,7 +606,7 @@ Content-Type: application/json
 
 ```http
 # 2. /key
-GET https://stream.musicme.cc/key/<sessionId>
+GET https://secure-stream.musicme.com/key/<sessionId>
 
 → 200
 { "key": "<base64 32 bytes>", "iv": "<base64 16 bytes>" }
@@ -614,7 +614,7 @@ GET https://stream.musicme.cc/key/<sessionId>
 
 ```http
 # 3. /stream  (par tranches; Range obligatoire pour gros fichiers)
-GET https://stream.musicme.cc/stream/<sessionId>
+GET https://secure-stream.musicme.com/stream/<sessionId>
 Range: bytes=0-262143
 
 → 206 Partial Content
@@ -773,7 +773,7 @@ import { Player } from '@demos/offline'
 
 // Dans _layout.tsx ou App.tsx — une seule fois.
 Player.configure({
-  baseUrl: 'https://stream.musicme.cc',
+  baseUrl: 'https://secure-stream.musicme.com',
   tokenProvider: async () => {
     const { token } = await fetch('/api/player-token', { method: 'POST', credentials: 'include' }).then(r => r.json())
     return token
@@ -869,7 +869,7 @@ Trois endpoints, tous sous `STREAM_URL`. `trackId` a le format `"<cb>:<disc>:<tr
 
 ```http
 # 1. Obtenir une licence + télécharger le ciphertext (premier download)
-POST https://stream.musicme.cc/offline/license
+POST https://secure-stream.musicme.com/offline/license
 Authorization: Bearer <JWT>
 Content-Type: application/json
 
@@ -889,7 +889,7 @@ Content-Type: application/json
 
 ```http
 # 2. Renouveler une licence expirée ou proche d'expirer (PAS de re-download)
-POST https://stream.musicme.cc/offline/license-refresh
+POST https://secure-stream.musicme.com/offline/license-refresh
 Authorization: Bearer <JWT>
 Content-Type: application/json
 
@@ -922,7 +922,7 @@ Content-Type: application/json
 | `PARTNER_ID` | backend | opérateur musicme | `mon-site` |
 | `MINT_KEY` | backend | opérateur musicme (one-shot) | `mk_live_…` |
 | `ADMIN_URL` | backend | constante | `https://admin-stream.musicme.cc` |
-| `STREAM_URL` | frontend | constante | `https://stream.musicme.cc` |
+| `STREAM_URL` | frontend | constante | `https://secure-stream.musicme.com` |
 | Allowed origins | déclaré côté admin | opérateur musicme | `https://www.mon-site.fr` |
 | Static IP serveur | déclaré côté admin (CIDR) | toi → opérateur musicme | `1.2.3.4/32` |
 
@@ -933,7 +933,7 @@ Content-Type: application/json
 1. **`MINT_KEY` ne sort jamais du backend.** Si elle fuit, on rotate et on te donne une nouvelle clé. C'est plus douloureux pour toi que pour nous (downtime de ton service le temps que tu mettes à jour). Stocke-la dans un secret manager (Vault, AWS Secrets Manager, GCP Secret Manager, `wrangler secret put` si tu es sur Cloudflare, etc.).
 2. **`MINT_KEY` ne va pas dans Git.** Pas en clair, pas dans un fichier `.env` versionné. Utilise `.env` + `.gitignore`.
 3. **Ta route `/api/player-token` est derrière l'auth de session.** Sinon, un scrappeur peut récupérer des JWT à la volée et exploiter ton quota.
-4. **CORS strict.** Notre worker `stream.musicme.cc` n'accepte que les origines déclarées dans `partners.allowed_origins`. Ajoute toutes les origines depuis lesquelles le lecteur tournera (prod + staging si besoin).
+4. **CORS strict.** Notre worker `secure-stream.musicme.com` n'accepte que les origines déclarées dans `partners.allowed_origins`. Ajoute toutes les origines depuis lesquelles le lecteur tournera (prod + staging si besoin).
 5. **HTTPS partout.** Le JWT et les flux audio doivent rester sur des canaux chiffrés. Tout HTTP est refusé.
 6. **Ne loggue pas les JWT côté serveur** dans des logs accessibles. Ils sont courts mais valides.
 7. **Le JWT ne donne pas accès au catalogue.** Tu ne peux pas appeler `/init-stream` avec un `cb` arbitraire et espérer trouver "tous les morceaux" : le worker valide chaque `(cb, disc, track)` contre une base interne. Si tu donnes un identifiant qui n'est pas dans le catalogue, tu reçois `404 track_not_found`.
@@ -968,7 +968,7 @@ Content-Type: application/json
 |---|---|---|
 | `init-stream HTTP 401 invalid_token` | JWT expiré ou mal signé | Vérifie l'horloge serveur (`exp` est en secondes UNIX UTC). Re-mint et réessaie. |
 | `init-stream HTTP 404 track_not_found` | Le `(cb, disc, track)` n'existe pas dans le catalogue | Confirme l'identifiant côté ton catalogue ; nous appeler si tu penses qu'il devrait exister. |
-| `stream HTTP 403 fingerprint_mismatch` | Le client qui appelle `/stream` n'a pas la même IP / user-agent que celui qui a fait `/init-stream` | Relance le flow depuis le même navigateur / même session. Ne **pas** réutiliser un `sessionId` minté côté backend pour servir au frontend. |
+| `stream HTTP 403 fingerprint_mismatch` | Le client qui appelle `/stream` n'a pas le même user-agent que celui qui a fait `/init-stream` | Relance le flow depuis le même client. Ne **pas** réutiliser un `sessionId` minté côté backend pour servir au frontend. (L'IP peut changer librement — mobile ok.) |
 | `stream HTTP 410 session_expired` | Session > TTL (5 min par défaut) | Le SDK gère ce cas via `onSessionExpired` ; si tu fais ton propre code, recommence à `/init-stream`. |
 | Lecture MSE échoue avec `SourceBuffer error code=4` | MP4 non fragmenté | Utiliser `mode: 'mse'` (le SDK fragmente au vol via mp4box.js) ou tomber en `mode: 'blob'`. |
 | `403` sur `/stream` côté CORS | Origine pas dans `allowed_origins` | L'opérateur musicme l'ajoute. Vérifie aussi le CORS preflight (OPTIONS). |
@@ -1098,7 +1098,7 @@ export default function PlayerPage() {
 
   useEffect(() => {
     const p = new SecureAudioPlayer({
-      workerUrl: 'https://stream.musicme.cc',
+      workerUrl: 'https://secure-stream.musicme.com',
       getToken: async () => {
         const r = await fetch('/api/player-token', { method: 'POST', credentials: 'include' })
         if (!r.ok) throw new Error('token fetch failed')
@@ -1132,4 +1132,4 @@ Avec ces ~70 lignes de code, l'intégration est faite.
 
 ---
 
-*Dernière mise à jour : 2026-07-09 — §6.6 API offline (`/offline/license`, `/offline/license-refresh`, `/offline/blob` — garantie key/iv stable par track, refresh sans re-download). 2026-05-14 : §6.5.2 Pattern B (module natif RN `@demos/offline`). En cas de doute, contacter l'opérateur musicme (`support@musicme.cc`).*
+*Dernière mise à jour : 2026-08-03 — domaine primaire `secure-stream.musicme.com` (ex `stream.musicme.cc`), empreinte de session user-agent seul (IP libérée — mobile CGNAT), origins `capacitor://`/`ionic://` pour apps natives. 2026-07-09 : §6.6 API offline (`/offline/license`, `/offline/license-refresh`, `/offline/blob` — garantie key/iv stable par track, refresh sans re-download). 2026-05-14 : §6.5.2 Pattern B (module natif RN `@demos/offline`). En cas de doute, contacter l'opérateur musicme (`support@musicme.cc`).*
