@@ -2,9 +2,9 @@
  * Cast-framework-agnostic playback brain of the receiver. Wraps the SDK
  * Playlist; consumes SenderMessages, emits ReceiverMessages through the
  * injected `send`. No CAF import — unit-testable in happy-dom via the SDK's
- * __setTestPlayerFactory hook.
+ * PlaylistOptions.playerFactory injection point.
  */
-import { Playlist } from '@cyberscaling/secure-audio-stream-client'
+import { Playlist, type PlaylistOptions } from '@cyberscaling/secure-audio-stream-client'
 import type { CastTrackMeta, ReceiverMessage, ReceiverState, SenderMessage } from './protocol'
 
 const STATUS_THROTTLE_MS = 1000
@@ -15,6 +15,8 @@ export type ReceiverControllerOptions = {
   send: (msg: ReceiverMessage) => void
   /** Fired when the current track meta changes — drives the on-TV UI. */
   onTrackChange?: (meta: CastTrackMeta | null) => void
+  /** Test-only hook: override the player built by the underlying Playlist. */
+  playerFactory?: PlaylistOptions['playerFactory']
 }
 
 export class ReceiverController {
@@ -37,6 +39,7 @@ export class ReceiverController {
       audioElement: opts.audioElement,
       sessionLookahead: 2,
       kvLookahead: 5,
+      ...(opts.playerFactory !== undefined && { playerFactory: opts.playerFactory }),
       onCurrentChange: (curr) => {
         this.opts.onTrackChange?.((curr?.meta as CastTrackMeta | undefined) ?? null)
         this.sendStatus(true)

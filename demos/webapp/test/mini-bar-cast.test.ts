@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 
-import { __setTestPlayerFactory } from '@cyberscaling/secure-audio-stream-client'
+import type { PlaylistOptions } from '@cyberscaling/secure-audio-stream-client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { __setTestCastStore, CastStore } from '../public/cast-sender'
 import { mountMiniBar } from '../public/components/mini-bar'
@@ -20,6 +20,9 @@ function makeMockPlayer(audio: HTMLAudioElement) {
   }
 }
 
+const playerFactory: NonNullable<PlaylistOptions['playerFactory']> = (opts) =>
+  makeMockPlayer(opts.audioElement as HTMLAudioElement) as never
+
 let fw: FakeCastFramework
 let store: CastStore
 
@@ -27,7 +30,6 @@ beforeEach(async () => {
   document.body.innerHTML =
     '<div id="player-bar"></div><div id="queue-panel" hidden></div><audio id="player"></audio>'
   localStorage.clear()
-  __setTestPlayerFactory((opts) => makeMockPlayer(opts.audioElement as HTMLAudioElement) as never)
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue(new Response(JSON.stringify({ refs_warmed: 0 }), { status: 200 })),
@@ -41,7 +43,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   __setTestCastStore(null)
-  __setTestPlayerFactory(null)
   vi.unstubAllGlobals()
 })
 
@@ -60,7 +61,7 @@ describe('mini-bar cast integration', () => {
 
   it('hands off the local queue on connect (LOAD sent, local paused)', async () => {
     const audio = document.getElementById('player') as HTMLAudioElement
-    playlistStore.init(audio, 'https://stream.example', async () => 'tok')
+    playlistStore.init(audio, 'https://stream.example', async () => 'tok', playerFactory)
     playlistStore.playTrack({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
     mount()
     fw.connect()

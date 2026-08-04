@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 
-import { __setTestPlayerFactory } from '@cyberscaling/secure-audio-stream-client'
+import type { PlaylistOptions } from '@cyberscaling/secure-audio-stream-client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { __setTestCastStore, CastStore } from '../public/cast-sender'
 import { playlistStore } from '../public/playlist-store'
@@ -27,11 +27,11 @@ beforeEach(async () => {
   document.body.innerHTML = '<audio id="player"></audio>'
   localStorage.clear()
   players = []
-  __setTestPlayerFactory((opts) => {
+  const playerFactory: NonNullable<PlaylistOptions['playerFactory']> = (opts) => {
     const p = makeMockPlayer(opts.audioElement as HTMLAudioElement)
     players.push(p)
     return p as never
-  })
+  }
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue(new Response(JSON.stringify({ refs_warmed: 0 }), { status: 200 })),
@@ -45,12 +45,12 @@ beforeEach(async () => {
     document.getElementById('player') as HTMLAudioElement,
     'https://stream.example',
     async () => 'tok',
+    playerFactory,
   )
 })
 
 afterEach(() => {
   __setTestCastStore(null)
-  __setTestPlayerFactory(null)
   vi.unstubAllGlobals()
   playlistStore.reset()
 })

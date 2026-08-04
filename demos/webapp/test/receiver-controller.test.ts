@@ -3,7 +3,6 @@
  */
 
 import type { SecureAudioPlayerOptions } from '@cyberscaling/secure-audio-stream-client'
-import { __setTestPlayerFactory } from '@cyberscaling/secure-audio-stream-client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReceiverMessage } from '../public/cast/protocol'
 import { ReceiverController } from '../public/cast/receiver-controller'
@@ -34,12 +33,6 @@ function makeMockPlayer(audio: HTMLAudioElement): MockPlayer {
 beforeEach(() => {
   players = []
   playerOpts = []
-  __setTestPlayerFactory((opts) => {
-    playerOpts.push(opts)
-    const p = makeMockPlayer(opts.audioElement as HTMLAudioElement)
-    players.push(p)
-    return p as never
-  })
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue(new Response(JSON.stringify({ refs_warmed: 0 }), { status: 200 })),
@@ -47,7 +40,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  __setTestPlayerFactory(null)
   vi.unstubAllGlobals()
 })
 
@@ -58,6 +50,12 @@ function makeController() {
     workerUrl: 'https://stream.example',
     audioElement: audio,
     send: (m) => sent.push(m),
+    playerFactory: (opts) => {
+      playerOpts.push(opts)
+      const p = makeMockPlayer(opts.audioElement as HTMLAudioElement)
+      players.push(p)
+      return p as never
+    },
   })
   return { ctrl, sent, audio }
 }

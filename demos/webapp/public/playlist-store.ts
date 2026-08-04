@@ -12,7 +12,11 @@
  * queue panel switches to queue mode. The two modes are mutually
  * exclusive — switching automatically stops the other.
  */
-import { Playlist, type TrackRef } from '@cyberscaling/secure-audio-stream-client'
+import {
+  Playlist,
+  type PlaylistOptions,
+  type TrackRef,
+} from '@cyberscaling/secure-audio-stream-client'
 import type { CastQueueItem } from './cast/protocol'
 import { type CastStore, getCastStore } from './cast-sender'
 
@@ -53,17 +57,25 @@ class PlaylistStore {
   private audioEl: HTMLAudioElement | null = null
   private workerUrl = ''
   private getToken: (() => Promise<string>) | null = null
+  /** Test-only hook: override the player built by the underlying Playlist. */
+  private playerFactory: PlaylistOptions['playerFactory']
 
   private castUnsub: (() => void) | null = null
   private prevCastState = this.cast.state
   /** startId of the last LOAD we sent (reconcile fallback if no STATUS yet). */
   private lastSentStartId: string | undefined
 
-  init(audio: HTMLAudioElement, workerUrl: string, getToken: () => Promise<string>): void {
+  init(
+    audio: HTMLAudioElement,
+    workerUrl: string,
+    getToken: () => Promise<string>,
+    playerFactory?: PlaylistOptions['playerFactory'],
+  ): void {
     if (this.playlist) return
     this.audioEl = audio
     this.workerUrl = workerUrl
     this.getToken = getToken
+    this.playerFactory = playerFactory
     this.buildLocalPlaylist()
     this.restore()
     this.prevCastState = this.cast.state
@@ -91,6 +103,7 @@ class PlaylistStore {
       audioElement,
       sessionLookahead: 2,
       kvLookahead: 5,
+      ...(this.playerFactory !== undefined && { playerFactory: this.playerFactory }),
       onCurrentChange: () => {
         this.emit()
       },

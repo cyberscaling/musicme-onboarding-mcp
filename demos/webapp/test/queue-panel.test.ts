@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { __setTestPlayerFactory } from '@cyberscaling/secure-audio-stream-client'
+import type { PlaylistOptions } from '@cyberscaling/secure-audio-stream-client'
 import { mountQueuePanel } from '../public/components/queue-panel'
 import { playlistStore } from '../public/playlist-store'
 
@@ -17,19 +17,20 @@ function makeMockPlayer(audio: HTMLAudioElement) {
   }
 }
 
+const playerFactory: NonNullable<PlaylistOptions['playerFactory']> = (opts) =>
+  makeMockPlayer(opts.audioElement as HTMLAudioElement) as never
+
 beforeEach(() => {
   document.body.innerHTML = '<div id="queue-panel"></div><audio id="player"></audio>'
   localStorage.clear()
-  __setTestPlayerFactory((opts) => makeMockPlayer(opts.audioElement as HTMLAudioElement) as never)
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))
   playlistStore.reset()
   const audio = document.getElementById('player') as HTMLAudioElement
-  playlistStore.init(audio, 'https://x', async () => 't')
+  playlistStore.init(audio, 'https://x', async () => 't', playerFactory)
   mountQueuePanel(document.getElementById('queue-panel') as HTMLElement)
 })
 
 afterEach(() => {
-  __setTestPlayerFactory(null)
   vi.unstubAllGlobals()
 })
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Playlist, __setTestPlayerFactory } from '@cyberscaling/secure-audio-stream-client'
+import { Playlist, type PlaylistOptions } from '@cyberscaling/secure-audio-stream-client'
 import { LS_KEY, type TrackMeta, playlistStore } from '../public/playlist-store'
 
 function makeMockPlayer(audio: HTMLAudioElement) {
@@ -13,13 +13,15 @@ function makeMockPlayer(audio: HTMLAudioElement) {
   }
 }
 
+const playerFactory: NonNullable<PlaylistOptions['playerFactory']> = (opts) =>
+  makeMockPlayer(opts.audioElement as HTMLAudioElement) as never
+
 function makeAudio(): HTMLAudioElement {
   return document.createElement('audio')
 }
 
 beforeEach(() => {
   localStorage.clear()
-  __setTestPlayerFactory((opts) => makeMockPlayer(opts.audioElement as HTMLAudioElement) as never)
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue(new Response(JSON.stringify({ refs_warmed: 0 }), { status: 200 })),
@@ -28,7 +30,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  __setTestPlayerFactory(null)
   vi.unstubAllGlobals()
 })
 
@@ -40,14 +41,14 @@ describe('playlistStore — init + accessors', () => {
 
   it('init creates an underlying Playlist tied to the supplied audio', () => {
     const audio = makeAudio()
-    playlistStore.init(audio, 'https://x', async () => 't')
+    playlistStore.init(audio, 'https://x', async () => 't', playerFactory)
     expect(playlistStore.audio).toBe(audio)
   })
 })
 
 describe('playlistStore — enqueue / remove / move', () => {
   it('enqueue adds an item with meta and persists to localStorage', () => {
-    playlistStore.init(makeAudio(), 'https://x', async () => 't')
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
     playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A', coverCb: '1' })
     expect(playlistStore.items).toHaveLength(1)
     expect(playlistStore.items[0]!.meta).toMatchObject({ title: 'A' })
@@ -56,7 +57,7 @@ describe('playlistStore — enqueue / remove / move', () => {
   })
 
   it('remove deletes by id', () => {
-    playlistStore.init(makeAudio(), 'https://x', async () => 't')
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
     playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
     playlistStore.enqueue({ cb: 2, disc: 1, track: 1 }, { title: 'B' })
     const id = playlistStore.items[0]!.id
@@ -68,7 +69,7 @@ describe('playlistStore — enqueue / remove / move', () => {
 
 describe('playlistStore — change subscription', () => {
   it('onChange fires on mutation', () => {
-    playlistStore.init(makeAudio(), 'https://x', async () => 't')
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
     const handler = vi.fn()
     const off = playlistStore.onChange(handler)
     playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
@@ -90,7 +91,7 @@ describe('playlistStore — persist / restore', () => {
         currentIndex: -1,
       }),
     )
-    playlistStore.init(makeAudio(), 'https://x', async () => 't')
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
     expect(playlistStore.items).toHaveLength(1)
     expect(playlistStore.items[0]!.meta?.title).toBe('Saved')
     // No autoplay : currentIndex stays -1 even though we persisted 0 earlier.
@@ -98,7 +99,7 @@ describe('playlistStore — persist / restore', () => {
   })
 
   it('clear empties the playlist and removes LS entry', () => {
-    playlistStore.init(makeAudio(), 'https://x', async () => 't')
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
     playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
     playlistStore.clear()
     expect(playlistStore.items).toEqual([])
