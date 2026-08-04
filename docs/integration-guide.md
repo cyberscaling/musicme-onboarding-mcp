@@ -411,6 +411,11 @@ bun add @cyberscaling/secure-audio-stream-client
 
 (Source disponible dans `client/` du monorepo si tu veux vendor.)
 
+> **Résilience réseau** : à partir de 0.3.2 le SDK retente automatiquement
+> les coupures réseau transitoires sur `/stream`. Si tu n'utilises pas le
+> SDK, implémente l'équivalent — voir
+> [notes/2026-08-04-resilience-reseau-stream.md](notes/2026-08-04-resilience-reseau-stream.md).
+
 Usage :
 
 ```typescript
