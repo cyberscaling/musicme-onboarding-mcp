@@ -13,7 +13,8 @@ demos/webapp/
     api.ts                      same-origin auth + JWT mint + logout cleanup
     catalog.ts                  typed wrappers + alias adapters for /api/catalog/*
     covers.ts                   cover CDN URL builder
-    playlist-store.ts           singleton wrapping SDK Playlist + localStorage sync
+    preview-player.ts           thin SecureAudioPlayer.loadPreview bridge for Playlist
+    playlist-store.ts           Playlist wrapper + mode switch + localStorage sync
     components/
       mini-bar.ts               persistent bottom bar
       queue-panel.ts            slide-up queue with drag-to-reorder
@@ -61,10 +62,11 @@ Beyond the original login + search + album pages, the webapp ships :
 - **Artist** (`/artist/:id`) — bio + albums + top tracks + similar artists
 - **Style** (`/style/:id`) — filtered top albums for a genre
 - **Persistent mini-bar** at the bottom of every page — cover, title, ⏮ / ⏯ / ⏭, ≡ queue toggle, 2-px progress bar
+- **Full / preview switch** in the top navigation — applies to the next loaded track, persists across reloads, and labels active previews with their 60 s or 90 s duration
 - **Queue panel** (slide-up via mini-bar ≡) — drag the ⠿ handle (or anywhere on the row) to reorder, ✕ to remove, tap row to jump
 - **LocalStorage persistence** of the queue across reload (key `musicme:webapp:playlist:v1`). Reload restores items but does NOT autoplay ; user clicks ▶ in the mini-bar to resume.
 
-The mini-bar + queue panel are driven by `playlistStore` (singleton in `public/playlist-store.ts`) which wraps the SDK `Playlist` class attached to a single persistent `<audio>` element living in `index.html`. Pages never touch the audio element directly.
+The mini-bar + queue panel are driven by `playlistStore` (singleton in `public/playlist-store.ts`) which wraps the SDK `Playlist` class attached to a single persistent `<audio>` element living in `index.html`. Pages never touch the audio element directly. `Playlist` has no native preview mode: the demo injects a thin player bridge whose `load()` delegates to SDK 0.5.0 `loadPreview()`.
 
 ## Catalog API proxy
 
@@ -182,6 +184,40 @@ Open the webapp URL in a browser. Login with one of the `DEMO_USERS` accounts (d
 
 **Browser support** : iOS 17.1+ Safari (ManagedMediaSource), Chrome / Edge / Firefox desktop (MSE). Earlier iOS falls back to `blob` mode (downloads the whole track before playing).
 
+## SDK preview bridge
+
+Application integrations should call
+`SecureAudioPlayer.loadPreview({ cb, disc, track })` directly for a single
+preview. It resolves to `{ sessionId, expiresAt, previewSeconds: 60 | 90 }`,
+uses the normal encrypted SDK pipeline and does not autoplay.
+
+The demo keeps `Playlist` only to preserve its queue UI. This is an
+application-level bridge, not a native `Playlist` feature:
+
+- `PreviewAudioPlayer.load()` delegates to `SecureAudioPlayer.loadPreview()`;
+- `sessionLookahead` is `0` while preview mode is active, preventing full
+  `/init-stream` sessions from being prefetched;
+- the selected full/preview mode is read again when loading the next track;
+- changing mode does not interrupt the currently loaded track;
+- Cast is hidden in preview mode, and mode switching is disabled while Cast is
+  connected.
+
+While a preview is actively playing, its heartbeats keep the session alive but
+produce no `play_extract`, `play_full`, `complete`, or royalties-ledger
+message. Before play, while paused, and after `ended`, no periodic heartbeat
+extends the TTL. The mini-player displays 60/90 as a policy maximum; a short
+source can end earlier.
+
+### Test previews end-to-end
+
+1. Open the demo in the configured local/staging environment and log in.
+2. Select **Extrait** in the top navigation, then start the next track. The current track is never interrupted by a mode change.
+3. Confirm that the mini-player shows `EXTRAIT · 60 s` or `EXTRAIT · 90 s`, without assuming that a short source contains that exact duration.
+4. In the browser network inspector, confirm a `POST /init-preview`, followed by encrypted range requests to `/stream/:sessionId`.
+5. Select **Flux complet**, then start another track and confirm that it uses `POST /init-stream`.
+
+Cast is hidden while **Extrait** is selected. If a Cast session is already connected, the mode switch is disabled until disconnection.
+
 ## Tests
 
 ```bash
@@ -194,6 +230,7 @@ Add new browser tests to the `include` list in `vitest.client.config.ts` AND the
 
 ## See also
 
-- `client/README.md` — SDK API
-- `system-design/09-partner-integration-guide.md` — integrator guide
-- `docs/musicme-api.md` — catalog API quirks documented endpoint-by-endpoint
+- [`client/README.md`](../../client/README.md) — SDK API
+- [`client/docs/sdk-audio-preview-integration.md`](../../client/docs/sdk-audio-preview-integration.md) — standalone SDK-first preview guide
+- [`system-design/09-partner-integration-guide.md`](../../system-design/09-partner-integration-guide.md) — integrator guide
+- [`docs/musicme-api.md`](../../docs/musicme-api.md) — catalog API quirks documented endpoint-by-endpoint

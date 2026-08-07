@@ -59,6 +59,12 @@ describe('mini-bar cast integration', () => {
     expect(btn.hidden).toBe(false)
   })
 
+  it('hides Cast while preview mode is selected', () => {
+    playlistStore.setPreviewEnabled(true)
+    const root = mount()
+    expect(root.querySelector<HTMLButtonElement>('button[data-action="cast"]')?.hidden).toBe(true)
+  })
+
   it('hands off the local queue on connect (LOAD sent, local paused)', async () => {
     const audio = document.getElementById('player') as HTMLAudioElement
     playlistStore.init(audio, 'https://stream.example', async () => 'tok', playerFactory)

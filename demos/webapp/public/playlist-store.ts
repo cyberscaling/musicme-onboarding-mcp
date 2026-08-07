@@ -15,10 +15,13 @@
 import {
   Playlist,
   type PlaylistOptions,
+  SecureAudioPlayer,
+  type SecureAudioPlayerOptions,
   type TrackRef,
 } from '@cyberscaling/secure-audio-stream-client'
 import type { CastQueueItem } from './cast/protocol'
 import { type CastStore, getCastStore } from './cast-sender'
+import { PreviewAudioPlayer } from './preview-player'
 
 export type TrackMeta = {
   title: string
@@ -36,6 +39,14 @@ export type StoredItem = {
 type Mode = 'idle' | 'queue' | 'ephemeral'
 
 export const LS_KEY = 'musicme:webapp:playlist:v1'
+export const PREVIEW_MODE_KEY = 'musicme:webapp:playback-mode:v1'
+
+export type PreviewSeconds = 60 | 90
+export type PreviewPlayerFactory = (
+  options: SecureAudioPlayerOptions,
+  ref: TrackRef,
+  onReady: (seconds: PreviewSeconds) => void,
+) => SecureAudioPlayer
 
 type Snapshot = { items: StoredItem[] }
 
@@ -59,6 +70,14 @@ class PlaylistStore {
   private getToken: (() => Promise<string>) | null = null
   /** Test-only hook: override the player built by the underlying Playlist. */
   private playerFactory: PlaylistOptions['playerFactory']
+  private previewPlayerFactory: PreviewPlayerFactory = (options, ref, onReady) =>
+    new PreviewAudioPlayer(options, ref, onReady)
+  private playlistOptions: PlaylistOptions | null = null
+  private _previewEnabled = false
+  private _activePreviewSeconds: PreviewSeconds | null = null
+  private activeTrackUsesPreview = false
+  private pendingRef: TrackRef | null = null
+  private playbackGeneration = 0
 
   private castUnsub: (() => void) | null = null
   private prevCastState = this.cast.state
@@ -70,16 +89,20 @@ class PlaylistStore {
     workerUrl: string,
     getToken: () => Promise<string>,
     playerFactory?: PlaylistOptions['playerFactory'],
+    previewPlayerFactory?: PreviewPlayerFactory,
   ): void {
     if (this.playlist) return
     this.audioEl = audio
     this.workerUrl = workerUrl
     this.getToken = getToken
     this.playerFactory = playerFactory
+    if (previewPlayerFactory) this.previewPlayerFactory = previewPlayerFactory
+    this.restorePreviewMode()
     this.buildLocalPlaylist()
     this.restore()
     this.prevCastState = this.cast.state
     this.castUnsub = this.cast.onChange(() => this.onCastChange())
+    this.emit()
   }
 
   reset(): void {
@@ -91,23 +114,74 @@ class PlaylistStore {
     this.savedQueue = []
     this.activeItems = []
     this.mode = 'idle'
+    this.audioEl = null
+    this.workerUrl = ''
+    this.getToken = null
+    this.playerFactory = undefined
+    this.previewPlayerFactory = (options, ref, onReady) =>
+      new PreviewAudioPlayer(options, ref, onReady)
+    this.playlistOptions = null
+    this._previewEnabled = false
+    this._activePreviewSeconds = null
+    this.activeTrackUsesPreview = false
+    this.pendingRef = null
+    this.playbackGeneration = 0
   }
 
   private buildLocalPlaylist(): void {
     const audioElement = this.audioEl
     const getToken = this.getToken
     if (!audioElement || !getToken) return
-    this.playlist = new Playlist({
+    const options: PlaylistOptions = {
       workerUrl: this.workerUrl,
       getToken,
       audioElement,
-      sessionLookahead: 2,
+      sessionLookahead: this._previewEnabled ? 0 : 2,
       kvLookahead: 5,
-      ...(this.playerFactory !== undefined && { playerFactory: this.playerFactory }),
-      onCurrentChange: () => {
+      playerFactory: (playerOptions) => {
+        const generation = this.playbackGeneration
+        const ref = this.pendingRef
+        if (this.activeTrackUsesPreview && ref) {
+          return this.previewPlayerFactory(playerOptions, ref, (seconds) => {
+            if (generation !== this.playbackGeneration || !this.activeTrackUsesPreview) return
+            this._activePreviewSeconds = seconds
+            this.emit()
+          })
+        }
+        return this.playerFactory?.(playerOptions) ?? new SecureAudioPlayer(playerOptions)
+      },
+      onCurrentChange: (current) => {
+        this.playbackGeneration += 1
+        this.pendingRef = current?.ref ?? null
+        this.activeTrackUsesPreview = current !== null && this._previewEnabled
+        this._activePreviewSeconds = null
         this.emit()
       },
-    })
+    }
+    this.playlistOptions = options
+    this.playlist = new Playlist(options)
+  }
+
+  get previewEnabled(): boolean {
+    return this._previewEnabled
+  }
+
+  get activePreviewSeconds(): PreviewSeconds | null {
+    return this._activePreviewSeconds
+  }
+
+  /** Selects the mode for the next loaded track; current playback is untouched. */
+  setPreviewEnabled(enabled: boolean): boolean {
+    if (enabled && this.connected) return false
+    this._previewEnabled = enabled
+    if (this.playlistOptions) this.playlistOptions.sessionLookahead = enabled ? 0 : 2
+    try {
+      localStorage.setItem(PREVIEW_MODE_KEY, enabled ? 'preview' : 'full')
+    } catch {
+      // Selection remains valid for this page even when storage is unavailable.
+    }
+    this.emit()
+    return true
   }
 
   private get cast(): CastStore {
@@ -440,6 +514,14 @@ class PlaylistStore {
       // mode stays 'idle' — user must click play (mini-bar or queue row) to start.
     } catch {
       // ignore corrupt LS
+    }
+  }
+
+  private restorePreviewMode(): void {
+    try {
+      this._previewEnabled = localStorage.getItem(PREVIEW_MODE_KEY) === 'preview'
+    } catch {
+      this._previewEnabled = false
     }
   }
 }

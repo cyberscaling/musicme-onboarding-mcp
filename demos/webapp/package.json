@@ -15,8 +15,8 @@
     "gen-keys": "bun run tools/gen-keys.ts"
   },
   "dependencies": {
-    "@cyberscaling/secure-audio-stream-client": "workspace:*",
-    "hono": "^4.6.0"
+    "@cyberscaling/secure-audio-stream-client": "0.5.0",
+    "hono": "^4.12.18"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.5.0",
@@ -25,6 +25,6 @@
     "typescript": "^5.6.0",
     "vite": "^6.0.0",
     "vitest": "^2.1.0",
-    "wrangler": "^4.0.0"
+    "wrangler": "4.87.0"
   }
 }

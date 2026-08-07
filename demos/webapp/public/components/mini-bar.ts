@@ -16,7 +16,10 @@ export function mountMiniBar(root: HTMLElement): void {
     <div class="mini-bar">
       <img class="cv" alt="" src="${placeholderDataUrl()}">
       <div class="meta">
-        <div class="t"></div>
+        <div class="title-line">
+          <div class="t"></div>
+          <span class="preview-badge" hidden></span>
+        </div>
         <div class="a"></div>
       </div>
       <button class="ctrl" data-action="prev" aria-label="previous">⏮</button>
@@ -31,6 +34,7 @@ export function mountMiniBar(root: HTMLElement): void {
   const cover = root.querySelector<HTMLImageElement>('img.cv')!
   const title = root.querySelector<HTMLElement>('.meta .t')!
   const subtitle = root.querySelector<HTMLElement>('.meta .a')!
+  const previewBadge = root.querySelector<HTMLElement>('.preview-badge')!
   const toggleBtn = root.querySelector<HTMLButtonElement>('button[data-action="toggle"]')!
   const castBtn = root.querySelector<HTMLButtonElement>('button[data-action="cast"]')!
   const progressBar = root.querySelector<HTMLElement>('.progress > .bar')!
@@ -61,11 +65,15 @@ export function mountMiniBar(root: HTMLElement): void {
     })
 
   function render(): void {
-    castBtn.hidden = cast.state === 'unavailable'
+    castBtn.hidden = cast.state === 'unavailable' || playlistStore.previewEnabled
     castBtn.classList.toggle('active', cast.state === 'connected')
+    const previewSeconds = playlistStore.activePreviewSeconds
+    previewBadge.hidden = previewSeconds === null
+    previewBadge.textContent = previewSeconds === null ? '' : `EXTRAIT · ${previewSeconds} s`
 
     const remote = cast.state === 'connected' ? cast.lastStatus : null
     if (remote) {
+      previewBadge.hidden = true
       root.classList.add('visible')
       const meta = remote.meta
       title.textContent = meta?.title ?? '?'

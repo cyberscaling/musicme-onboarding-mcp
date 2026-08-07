@@ -315,12 +315,32 @@ table .muted { color: var(--text-muted); }
   flex: 1;
   min-width: 0;
 }
+.mini-bar .title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 .mini-bar .meta .t {
   color: #eee;
   font-size: 13px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.mini-bar .preview-badge {
+  flex: none;
+  padding: 2px 5px;
+  border: 1px solid rgba(231, 173, 74, 0.42);
+  border-radius: 3px;
+  color: #e7ad4a;
+  background: rgba(231, 173, 74, 0.08);
+  font-family: Menlo, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  line-height: 1.2;
 }
 .mini-bar .meta .a {
   color: #888;
@@ -564,6 +584,53 @@ table .muted { color: var(--text-muted); }
 #top-nav .brand { font-weight: 600; color: #eee; }
 #top-nav .spacer { flex: 1; }
 #top-nav .who { color: #888; font-size: 12px; }
+#top-nav .playback-mode {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid #292929;
+  border-radius: 5px;
+  background: #111;
+}
+#top-nav .playback-mode button {
+  padding: 4px 8px;
+  border-radius: 3px;
+  color: #777;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.025em;
+  line-height: 1.2;
+}
+#top-nav .playback-mode button:hover:not(:disabled) {
+  color: #ddd;
+  background: #1b1b1b;
+}
+#top-nav .playback-mode button[aria-pressed="true"] {
+  color: #f2f0ff;
+  background: #49406e;
+  box-shadow: inset 0 0 0 1px rgba(184, 171, 255, 0.18);
+}
+#top-nav .playback-mode button:focus-visible {
+  outline: 2px solid #a89bff;
+  outline-offset: 2px;
+}
+#top-nav .playback-mode button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+#top-nav .mode-label-short { display: none; }
+
+@media (max-width: 680px) {
+  #top-nav .top-nav { gap: 7px; padding-inline: 8px; }
+  #top-nav .mode-label-wide { display: none; }
+  #top-nav .mode-label-short { display: inline; }
+  #top-nav .who { display: none; }
+}
+
+@media (max-width: 480px) {
+  #top-nav [data-action="search"] { display: none; }
+  #top-nav button,
+  #top-nav a { padding-inline: 7px; }
+}
 
 /* ── Album card artist row + avatar ─────────────────────────────── */
 

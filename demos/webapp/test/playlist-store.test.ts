@@ -1,6 +1,17 @@
+import type {
+  PlaylistOptions,
+  SecureAudioPlayerOptions,
+} from '@cyberscaling/secure-audio-stream-client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Playlist, type PlaylistOptions } from '@cyberscaling/secure-audio-stream-client'
-import { LS_KEY, type TrackMeta, playlistStore } from '../public/playlist-store'
+import { __setTestCastStore, CastStore } from '../public/cast-sender'
+import {
+  LS_KEY,
+  PREVIEW_MODE_KEY,
+  type PreviewPlayerFactory,
+  playlistStore,
+  type TrackMeta,
+} from '../public/playlist-store'
+import { FakeCastFramework } from './helpers-cast'
 
 function makeMockPlayer(audio: HTMLAudioElement) {
   return {
@@ -16,6 +27,9 @@ function makeMockPlayer(audio: HTMLAudioElement) {
 const playerFactory: NonNullable<PlaylistOptions['playerFactory']> = (opts) =>
   makeMockPlayer(opts.audioElement as HTMLAudioElement) as never
 
+const previewPlayerFactory: PreviewPlayerFactory = (opts, _ref, _onReady) =>
+  makeMockPlayer(opts.audioElement as HTMLAudioElement) as never
+
 function makeAudio(): HTMLAudioElement {
   return document.createElement('audio')
 }
@@ -27,9 +41,11 @@ beforeEach(() => {
     vi.fn().mockResolvedValue(new Response(JSON.stringify({ refs_warmed: 0 }), { status: 200 })),
   )
   playlistStore.reset()
+  __setTestCastStore(null)
 })
 
 afterEach(() => {
+  __setTestCastStore(null)
   vi.unstubAllGlobals()
 })
 
@@ -104,5 +120,84 @@ describe('playlistStore — persist / restore', () => {
     playlistStore.clear()
     expect(playlistStore.items).toEqual([])
     expect(localStorage.getItem(LS_KEY)).toBeNull()
+  })
+})
+
+describe('playlistStore — preview mode', () => {
+  it('defaults to full playback and restores the persisted preview selection', () => {
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
+    expect(playlistStore.previewEnabled).toBe(false)
+
+    playlistStore.reset()
+    localStorage.setItem(PREVIEW_MODE_KEY, 'preview')
+    playlistStore.init(
+      makeAudio(),
+      'https://x',
+      async () => 't',
+      playerFactory,
+      previewPlayerFactory,
+    )
+
+    expect(playlistStore.previewEnabled).toBe(true)
+  })
+
+  it('persists preview selection without changing the active track', async () => {
+    const normalFactory = vi.fn((opts: SecureAudioPlayerOptions) =>
+      makeMockPlayer(opts.audioElement as HTMLAudioElement),
+    ) as NonNullable<PlaylistOptions['playerFactory']>
+    const previewFactory = vi.fn(previewPlayerFactory)
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', normalFactory, previewFactory)
+    playlistStore.playTrack({ cb: 1, disc: 1, track: 1 }, { title: 'Current' })
+    await vi.waitFor(() => expect(normalFactory).toHaveBeenCalledTimes(1))
+
+    expect(playlistStore.setPreviewEnabled(true)).toBe(true)
+
+    expect(playlistStore.previewEnabled).toBe(true)
+    expect(playlistStore.activePreviewSeconds).toBeNull()
+    expect(normalFactory).toHaveBeenCalledTimes(1)
+    expect(previewFactory).not.toHaveBeenCalled()
+    expect(localStorage.getItem(PREVIEW_MODE_KEY)).toBe('preview')
+  })
+
+  it('uses the preview factory for the next track and reports its duration', async () => {
+    const normalFactory = vi.fn(playerFactory)
+    const previewFactory = vi.fn(previewPlayerFactory)
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', normalFactory, previewFactory)
+    playlistStore.setPreviewEnabled(true)
+
+    playlistStore.playTrack({ cb: 2, disc: 1, track: 4 }, { title: 'Preview' })
+
+    await vi.waitFor(() => expect(previewFactory).toHaveBeenCalledTimes(1))
+    expect(previewFactory.mock.calls[0]?.[1]).toEqual({ cb: 2, disc: 1, track: 4 })
+    previewFactory.mock.calls[0]?.[2](90)
+    expect(playlistStore.activePreviewSeconds).toBe(90)
+    expect(normalFactory).not.toHaveBeenCalled()
+  })
+
+  it('keeps the active preview badge when full mode is selected for the next track', async () => {
+    const previewFactory = vi.fn(previewPlayerFactory)
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory, previewFactory)
+    playlistStore.setPreviewEnabled(true)
+    playlistStore.playTrack({ cb: 3, disc: 1, track: 1 }, { title: 'Preview' })
+    await vi.waitFor(() => expect(previewFactory).toHaveBeenCalledTimes(1))
+    previewFactory.mock.calls[0]?.[2](60)
+
+    playlistStore.setPreviewEnabled(false)
+
+    expect(playlistStore.previewEnabled).toBe(false)
+    expect(playlistStore.activePreviewSeconds).toBe(60)
+  })
+
+  it('refuses preview mode while Cast is connected', async () => {
+    const framework = new FakeCastFramework()
+    const cast = new CastStore({ framework, mintToken: vi.fn().mockResolvedValue('tok') })
+    __setTestCastStore(cast)
+    await cast.init('APPID', 3600)
+    framework.connect()
+    playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
+
+    expect(playlistStore.setPreviewEnabled(true)).toBe(false)
+    expect(playlistStore.previewEnabled).toBe(false)
+    expect(localStorage.getItem(PREVIEW_MODE_KEY)).toBeNull()
   })
 })

@@ -3,6 +3,8 @@
  * Visible only when authenticated (toggle via setVisible after /me probe).
  */
 import { api } from '../api'
+import { getCastStore } from '../cast-sender'
+import { playlistStore } from '../playlist-store'
 import { navigate } from '../router'
 
 let backStack: string[] = []
@@ -17,6 +19,14 @@ export function mountTopNav(root: HTMLElement): void {
       <a data-action="home" href="/" class="brand">MusicMe</a>
       <a data-action="search" href="/search">search</a>
       <span class="spacer"></span>
+      <div class="playback-mode" role="group" aria-label="Mode de lecture du prochain morceau">
+        <button type="button" data-mode="full" aria-pressed="true">
+          <span class="mode-label-wide">Flux complet</span><span class="mode-label-short">Complet</span>
+        </button>
+        <button type="button" data-mode="preview" aria-pressed="false">
+          <span>Extrait</span>
+        </button>
+      </div>
       <span class="who" data-slot="who"></span>
       <button data-action="logout" aria-label="logout">logout</button>
     </nav>
@@ -34,19 +44,46 @@ export function mountTopNav(root: HTMLElement): void {
     e.preventDefault()
     navigate('/')
   })
-  root.querySelector<HTMLAnchorElement>('[data-action="search"]')!.addEventListener('click', (e) => {
-    e.preventDefault()
-    navigate('/search')
-  })
-  root.querySelector<HTMLButtonElement>('[data-action="logout"]')!.addEventListener('click', async () => {
-    try {
-      await api.logout()
-    } catch {
-      // ignore — clear happens in finally
-    }
-    backStack = []
-    navigate('/login')
-  })
+  root
+    .querySelector<HTMLAnchorElement>('[data-action="search"]')!
+    .addEventListener('click', (e) => {
+      e.preventDefault()
+      navigate('/search')
+    })
+  root
+    .querySelector<HTMLButtonElement>('[data-action="logout"]')!
+    .addEventListener('click', async () => {
+      try {
+        await api.logout()
+      } catch {
+        // ignore — clear happens in finally
+      }
+      backStack = []
+      navigate('/login')
+    })
+
+  const cast = getCastStore()
+  const fullModeButton = root.querySelector<HTMLButtonElement>('[data-mode="full"]')!
+  const previewModeButton = root.querySelector<HTMLButtonElement>('[data-mode="preview"]')!
+  fullModeButton.addEventListener('click', () => playlistStore.setPreviewEnabled(false))
+  previewModeButton.addEventListener('click', () => playlistStore.setPreviewEnabled(true))
+
+  const renderPlaybackMode = (): void => {
+    const previewEnabled = playlistStore.previewEnabled
+    const castConnected = cast.state === 'connected'
+    fullModeButton.setAttribute('aria-pressed', String(!previewEnabled))
+    previewModeButton.setAttribute('aria-pressed', String(previewEnabled))
+    fullModeButton.disabled = castConnected
+    previewModeButton.disabled = castConnected
+    const castTitle = castConnected
+      ? 'Déconnectez Cast pour modifier le mode de lecture'
+      : 'Mode appliqué au prochain morceau'
+    fullModeButton.title = castTitle
+    previewModeButton.title = castTitle
+  }
+  playlistStore.onChange(renderPlaybackMode)
+  cast.onChange(renderPlaybackMode)
+  renderPlaybackMode()
 
   // Track navigation history for back button
   const updateStack = (): void => {

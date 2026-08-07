@@ -1,8 +1,9 @@
 /**
  * @vitest-environment happy-dom
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import type { PlaylistOptions } from '@cyberscaling/secure-audio-stream-client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mountQueuePanel } from '../public/components/queue-panel'
 import { playlistStore } from '../public/playlist-store'
 
@@ -45,7 +46,9 @@ describe('queue-panel', () => {
     const rows = document.querySelectorAll('#queue-panel .qrow')
     expect(rows.length).toBe(2)
     expect(rows[0]!.querySelector('.t')!.textContent).toContain('A')
-    expect(rows[1]!.querySelector('img.cv')!.getAttribute('src')).toContain('/jpgr90/u0000000000002.jpg')
+    expect(rows[1]!.querySelector('img.cv')!.getAttribute('src')).toContain(
+      '/jpgr90/u0000000000002.jpg',
+    )
   })
 
   it('click on remove (✕) calls playlistStore.remove(id)', () => {
@@ -55,10 +58,10 @@ describe('queue-panel', () => {
     expect(playlistStore.items).toHaveLength(0)
   })
 
-  it('click on row body calls playlistStore.jumpTo(id)', () => {
+  it('click on row body calls playlistStore.playQueueAt(id)', () => {
     playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
     playlistStore.enqueue({ cb: 2, disc: 1, track: 1 }, { title: 'B' })
-    const spy = vi.spyOn(playlistStore, 'jumpTo')
+    const spy = vi.spyOn(playlistStore, 'playQueueAt')
     const row = document.querySelectorAll<HTMLElement>('.qrow')[1]!
     row.querySelector<HTMLElement>('.t')!.click()
     expect(spy).toHaveBeenCalledWith(playlistStore.items[1]!.id)
