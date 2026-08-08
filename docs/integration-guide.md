@@ -1043,7 +1043,7 @@ Content-Type: application/json
 |---|---|---|
 | `init-stream HTTP 401 invalid_token` | JWT expiré ou mal signé | Vérifie l'horloge serveur (`exp` est en secondes UNIX UTC). Re-mint et réessaie. |
 | `init-stream HTTP 403 forbidden_scope` (idem `/offline/license*`, warmups) | Le token porte `scope: "preview"` et ne couvre pas les routes du flux complet | Comportement attendu pour un utilisateur preview-only : bascule l'UI en extrait. Si l'utilisateur devrait avoir le flux complet, corrige la décision d'entitlement de `/api/player-token` (mint **sans** `scope`). Ne retente jamais. Ce contrôle passe avant celui de `sub_exp` : un abonnement expiré sur un token preview répond `forbidden_scope`, pas `subscription_expired`. |
-| `HTTP 403 invalid_scope` sur n'importe quelle route de lecture | JWT signé par toi (mode JWKS) avec une valeur `scope` inconnue — souvent `"full"` | Les seuls états valides sont claim absente ou `"preview"`. Retire le `"full"` explicite de ton émetteur. |
+| `HTTP 403 invalid_scope` sur une route média contrôlée par le scope (init, offline, warmups — les routes de métadonnées ne contrôlent pas le scope) | JWT signé par toi (mode JWKS) avec une valeur `scope` inconnue — souvent `"full"` | Les seuls états valides sont claim absente ou `"preview"`. Retire le `"full"` explicite de ton émetteur. |
 | `init-stream HTTP 404 track_not_found` | Le `(cb, disc, track)` n'existe pas dans le catalogue | Confirme l'identifiant côté ton catalogue ; nous appeler si tu penses qu'il devrait exister. |
 | `stream HTTP 403 fingerprint_mismatch` | Le client qui appelle `/stream` n'a pas le même user-agent que celui qui a fait `/init-stream` | Relance le flow depuis le même client. Ne **pas** réutiliser un `sessionId` minté côté backend pour servir au frontend. (L'IP peut changer librement — mobile ok.) |
 | `stream HTTP 410 session_expired` | Session > TTL (5 min par défaut) | Le SDK gère ce cas via `onSessionExpired` ; si tu fais ton propre code, recommence à `/init-stream`. |
@@ -1150,7 +1150,11 @@ export async function POST(req: Request) {
   const user = await getSessionUser(req) // ta logique
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
 
-  // 2. périmètre puis mint — omettre `scope` = accès complet (voir §6.2.1)
+  // 2. entitlement : trois issues possibles — full, preview, ou aucun token
+  if (!user.canStream && !user.canPreview) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
+  // omettre `scope` = accès complet (voir §6.2.1)
   const scope = user.canStream ? undefined : 'preview'
   const r = await fetch(
     `${process.env.ADMIN_URL}/api/internal/mint/${process.env.PARTNER_ID}`,
