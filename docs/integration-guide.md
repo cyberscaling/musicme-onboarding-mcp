@@ -421,7 +421,7 @@ n'a que **deux états valides** :
 | `scope` | Ce que le token ouvre |
 |---|---|
 | **absent** | Tout : `/init-stream`, les extraits `/init-preview`, les licences offline `/offline/license*`, les warmups et les métadonnées. C'est le comportement historique de tous les tokens émis jusqu'ici. |
-| `"preview"` | Les extraits `/init-preview` et les routes de métadonnées en lecture seule, rien d'autre. |
+| `"preview"` | L'ouverture d'extraits `/init-preview` et les routes de métadonnées en lecture seule. Pas `/init-stream`, pas `/offline/license*`, pas les warmups. (Une fois l'extrait ouvert, sa session sert `/key`, `/stream` et le heartbeat via son `sessionId`, comme n'importe quelle session.) |
 
 **N'écris jamais `scope: "full"`.** Ce n'est pas un synonyme de l'absence de
 champ : c'est une valeur invalide. L'absence du champ est ici **volontaire**
@@ -447,17 +447,26 @@ Deux détails de comportement qui évitent des faux diagnostics :
 
 - `forbidden_scope` est **fatal** : rejouer le même appel ne peut pas réussir,
   seul un token de périmètre plus large le peut. Le SDK l'expose en
-  `ForbiddenScopeError` et n'effectue aucun retry.
+  `ForbiddenScopeError` **depuis 0.6.0** et n'effectue aucun retry ; avec
+  0.5.0, le même refus arrive en `StreamError` générique `stream_403`, donc ne
+  branche pas ton UI sur `ForbiddenScopeError` avant d'avoir installé 0.6.0.
 - Sur les routes du flux complet, le contrôle de périmètre passe **avant** le
   contrôle d'expiration d'abonnement. Un token preview dont le `sub_exp` est
   dépassé répond donc `forbidden_scope`, pas `subscription_expired`.
 
 Ordre de déploiement quand cette mécanique est activée : Worker streaming →
-admin Worker → SDK → activation côté intégrateur. Et symétriquement, avant tout
-rollback du Worker streaming ou de l'admin Worker vers une version antérieure à
-`scope`, **coupe d'abord l'émission de tokens preview** : un mint ancien ignore
-le champ top-level et produirait silencieusement un JWT sans `scope`, donc à
-accès complet.
+admin Worker → SDK → activation côté intégrateur.
+
+Symétriquement, deux contraintes de rollback, aussi importantes l'une que
+l'autre — dans les deux cas, **coupe d'abord l'émission de tokens preview** :
+
+- rollback du **Worker streaming** vers une version qui ignore `scope` : les
+  tokens preview encore en circulation redeviendraient des tokens à accès
+  complet ;
+- rollback de l'**admin Worker** vers une version antérieure à `scope` :
+  l'ancien mint ignore le champ top-level et produirait silencieusement un JWT
+  sans `scope`, donc à accès complet — un utilisateur preview-only obtiendrait
+  le flux complet sans qu'aucune erreur ne soit levée nulle part.
 
 ### 6.3 Frontend — utiliser le SDK
 
