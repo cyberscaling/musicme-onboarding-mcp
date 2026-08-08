@@ -339,7 +339,12 @@ if (!MINT_KEY) {
  */
 export async function mintPlayerToken(
   userId: string,
-  extras: { country?: string; tier?: string } = {},
+  options: {
+    // omit `scope` for full access; use 'preview' only for preview-only users.
+    // NEVER send scope: 'full' — it is not a synonym of "absent", it is invalid.
+    scope?: 'preview'
+    claims?: { country?: string; tier?: string }
+  } = {},
 ): Promise<{ token: string; exp: number }> {
   const r = await fetch(`${ADMIN_URL}/api/internal/mint/${PARTNER_ID}`, {
     method: 'POST',
@@ -350,7 +355,9 @@ export async function mintPlayerToken(
     body: JSON.stringify({
       sub: userId,
       ttl_seconds: 300, // 5 min — lifetime of the JWT, not the audio session
-      claims: extras,   // arbitrary extra claims, surfaced in our analytics
+      // top-level field, never inside `claims`
+      ...(options.scope === 'preview' ? { scope: 'preview' } : {}),
+      claims: options.claims, // arbitrary extra claims, surfaced in our analytics
     }),
   })
 
@@ -378,14 +385,20 @@ api.post('/player-token', async (c) => {
   const user = await getCurrentUser(c)
   if (!user) return c.json({ error: 'unauthenticated' }, 401)
 
-  // 2. (optionnel) vérifie que cet utilisateur a le droit de jouer
-  //    (abonnement actif, quota du jour pas dépassé, géoblocage, etc.).
-  if (!user.canStream) return c.json({ error: 'forbidden' }, 403)
+  // 2. décide le périmètre AVANT de minter (abonnement actif, quota du jour,
+  //    géoblocage, etc.). Trois issues, pas deux :
+  //      - payant autorisé au flux complet  -> token sans `scope`
+  //      - gratuit/virtuel, extraits seuls  -> token `scope: 'preview'`
+  //      - aucun droit                      -> aucun token
+  if (!user.canStream && !user.canPreview) {
+    return c.json({ error: 'forbidden' }, 403)
+  }
+  const scope = user.canStream ? undefined : 'preview'
 
   // 3. mint et renvoie au frontend.
   const { token, exp } = await mintPlayerToken(user.id, {
-    country: user.country,
-    tier: user.subscription_tier,
+    ...(scope === 'preview' ? { scope } : {}),
+    claims: { country: user.country, tier: user.subscription_tier },
   })
   return c.json({ token, expiresAt: exp * 1000 })
 })
@@ -399,6 +412,52 @@ export default api
 - Le JWT renvoyé est **utilisable une seule fois** par init-stream (en pratique, plusieurs fois pendant ses 5 minutes de validité, mais à l'usage on en redemande un par morceau).
 - **Ne stocke pas le JWT dans `localStorage`** au-delà de quelques minutes — sa durée de vie est courte, et il vaut mieux en demander un nouveau à chaque morceau.
 - L'IP du serveur depuis lequel tu fais ce mint doit être déclarée dans `INTERNAL_MINT_CIDRS` côté admin musicme. Sinon le mint échoue avec `ip_not_allowed` (403).
+
+#### 6.2.1 Périmètre du token — `scope`
+
+Le champ **top-level** `scope` du mint restreint ce qu'un token peut faire. Il
+n'a que **deux états valides** :
+
+| `scope` | Ce que le token ouvre |
+|---|---|
+| **absent** | Tout : `/init-stream`, les extraits `/init-preview`, les licences offline `/offline/license*`, les warmups et les métadonnées. C'est le comportement historique de tous les tokens émis jusqu'ici. |
+| `"preview"` | Les extraits `/init-preview` et les routes de métadonnées en lecture seule, rien d'autre. |
+
+**N'écris jamais `scope: "full"`.** Ce n'est pas un synonyme de l'absence de
+champ : c'est une valeur invalide. L'absence du champ est ici **volontaire**
+pour les comptes autorisés au flux complet — ne la « corrige » pas en ajoutant
+un `"full"` explicite, qui casserait la lecture. De même, `scope` ne va jamais
+dans `claims` : le périmètre est une restriction contrôlée côté musicme, pas
+une claim libre que ton backend négocie.
+
+Réponses d'erreur, selon d'où vient le problème :
+
+| Contexte | HTTP | SDK |
+|---|---:|---|
+| mint scope invalide | `400 invalid_scope` | n/a |
+| mint `claims.scope` | `400 reserved_claim` | n/a |
+| preview token sur full | `403 forbidden_scope` | `ForbiddenScopeError` fatal, sans retry |
+| JWT signé directement avec scope inconnu | `403 invalid_scope` | `StreamError`, `code: stream_403` |
+
+Les deux dernières lignes ne concernent que le mode JWKS (tu signes toi-même) :
+en mode managed, le mint refuse déjà toute valeur autre que `"preview"`, donc un
+`403 invalid_scope` côté streaming signale un émetteur non conforme.
+
+Deux détails de comportement qui évitent des faux diagnostics :
+
+- `forbidden_scope` est **fatal** : rejouer le même appel ne peut pas réussir,
+  seul un token de périmètre plus large le peut. Le SDK l'expose en
+  `ForbiddenScopeError` et n'effectue aucun retry.
+- Sur les routes du flux complet, le contrôle de périmètre passe **avant** le
+  contrôle d'expiration d'abonnement. Un token preview dont le `sub_exp` est
+  dépassé répond donc `forbidden_scope`, pas `subscription_expired`.
+
+Ordre de déploiement quand cette mécanique est activée : Worker streaming →
+admin Worker → SDK → activation côté intégrateur. Et symétriquement, avant tout
+rollback du Worker streaming ou de l'admin Worker vers une version antérieure à
+`scope`, **coupe d'abord l'émission de tokens preview** : un mint ancien ignore
+le champ top-level et produirait silencieusement un JWT sans `scope`, donc à
+accès complet.
 
 ### 6.3 Frontend — utiliser le SDK
 
@@ -966,12 +1025,16 @@ Content-Type: application/json
 | `mint failed: HTTP 403 ip_not_allowed` | IP du serveur backend pas dans `INTERNAL_MINT_CIDRS` | Donne ton IP statique à l'opérateur musicme. En dev, configurer `DEV_AUTH_BYPASS=1` côté admin (jamais en prod). |
 | `mint failed: HTTP 400 partner_not_in_managed_mode` | Partenaire en mode `jwks` côté admin | L'opérateur musicme doit faire `POST /api/admin/keys/<id>/rotate`. |
 | `mint failed: HTTP 500 no_active_key` | Aucune clé active pour ton partenaire | L'opérateur musicme doit faire un `rotate` initial pour créer la première paire. |
+| `mint failed: HTTP 400 invalid_scope` | `scope` envoyé avec une valeur autre que `"preview"` (typiquement `"full"`) | Pour l'accès complet, **omets** le champ. `"preview"` est la seule valeur acceptée. |
+| `mint failed: HTTP 400 reserved_claim` | `scope` passé dans `claims` | Déplace-le au top-level du body ; `claims` reste réservé à tes claims analytics (`country`, `tier`, …). |
 
 ### 9.3 Streaming (frontend / SDK)
 
 | Symptôme | Cause probable | Fix |
 |---|---|---|
 | `init-stream HTTP 401 invalid_token` | JWT expiré ou mal signé | Vérifie l'horloge serveur (`exp` est en secondes UNIX UTC). Re-mint et réessaie. |
+| `init-stream HTTP 403 forbidden_scope` (idem `/offline/license*`, warmups) | Le token porte `scope: "preview"` et ne couvre pas les routes du flux complet | Comportement attendu pour un utilisateur preview-only : bascule l'UI en extrait. Si l'utilisateur devrait avoir le flux complet, corrige la décision d'entitlement de `/api/player-token` (mint **sans** `scope`). Ne retente jamais. Ce contrôle passe avant celui de `sub_exp` : un abonnement expiré sur un token preview répond `forbidden_scope`, pas `subscription_expired`. |
+| `HTTP 403 invalid_scope` sur n'importe quelle route de lecture | JWT signé par toi (mode JWKS) avec une valeur `scope` inconnue — souvent `"full"` | Les seuls états valides sont claim absente ou `"preview"`. Retire le `"full"` explicite de ton émetteur. |
 | `init-stream HTTP 404 track_not_found` | Le `(cb, disc, track)` n'existe pas dans le catalogue | Confirme l'identifiant côté ton catalogue ; nous appeler si tu penses qu'il devrait exister. |
 | `stream HTTP 403 fingerprint_mismatch` | Le client qui appelle `/stream` n'a pas le même user-agent que celui qui a fait `/init-stream` | Relance le flow depuis le même client. Ne **pas** réutiliser un `sessionId` minté côté backend pour servir au frontend. (L'IP peut changer librement — mobile ok.) |
 | `stream HTTP 410 session_expired` | Session > TTL (5 min par défaut) | Le SDK gère ce cas via `onSessionExpired` ; si tu fais ton propre code, recommence à `/init-stream`. |
@@ -1011,6 +1074,8 @@ Avant de pusher en prod :
 
 - [ ] `MINT_KEY` en envvar, pas dans Git, accessible **uniquement** au process backend.
 - [ ] Route `/api/player-token` derrière l'auth de session de ton site.
+- [ ] Route `/api/player-token` : l'entitlement est **décidé avant le mint** — flux complet autorisé → aucun champ `scope` ; extraits seuls → `scope: 'preview'` ; aucun droit → aucun token. Jamais `scope: 'full'`, jamais `scope` dans `claims`.
+- [ ] Testé les deux périmètres : un token sans `scope` joue le morceau complet, un token `scope: 'preview'` joue l'extrait et reçoit `403 forbidden_scope` sur `/init-stream`, `/offline/license*` et les warmups sans boucle de retry.
 - [ ] Frontend récupère le JWT à chaque morceau (pas de cache long).
 - [ ] CORS configuré correctement (test depuis l'origine prod).
 - [ ] IP statique de ton backend déclarée à l'opérateur musicme (CIDR allowlist).
@@ -1059,6 +1124,7 @@ Décodé :
 - `aud` : la cible attendue (toujours `secure-audio-stream` ici).
 - `exp` / `iat` : timestamps UNIX en secondes.
 - `kid` : identifiant de la clé qui a signé. Si on rotate la clé, l'ancien `kid` reste exposé sur le JWKS pendant 24h, le temps que les tokens en circulation expirent.
+- `scope` : **absent** dans l'exemple ci-dessus, et c'est justement ce qui donne l'accès complet. Un token restreint aux extraits porte en plus `"scope": "preview"`. Aucune autre valeur n'est valide — pas même `"full"`, qui serait refusé en `403 invalid_scope`.
 
 Tu n'as pas à parser ce token : tu le passes simplement en `Authorization: Bearer <token>` au stream worker.
 
@@ -1075,13 +1141,18 @@ export async function POST(req: Request) {
   const user = await getSessionUser(req) // ta logique
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
 
-  // 2. mint
+  // 2. périmètre puis mint — omettre `scope` = accès complet (voir §6.2.1)
+  const scope = user.canStream ? undefined : 'preview'
   const r = await fetch(
     `${process.env.ADMIN_URL}/api/internal/mint/${process.env.PARTNER_ID}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Mint-Key': process.env.MINT_KEY! },
-      body: JSON.stringify({ sub: user.id, ttl_seconds: 300 }),
+      body: JSON.stringify({
+        sub: user.id,
+        ttl_seconds: 300,
+        ...(scope === 'preview' ? { scope } : {}),
+      }),
     },
   )
   if (!r.ok) return NextResponse.json({ error: 'mint_failed' }, { status: 502 })
