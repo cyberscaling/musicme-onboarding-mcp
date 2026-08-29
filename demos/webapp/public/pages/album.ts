@@ -76,7 +76,7 @@ export function albumPage(root: HTMLElement, _me: Me, cb: string): void {
         const items = tracks.map((t: Track) => {
           const meta: TrackMeta = { title: t.title, album: album.title, coverCb: album.coverCb }
           if (album.artist !== undefined) meta.artist = album.artist
-          return { ref: { cb: Number(t.cb), disc: t.disc, track: t.track }, meta }
+          return { ref: { cb: Number(t.cb), disc: t.disc, track: t.track, context: 'on_demand' as const }, meta }
         })
         playlistStore.playFromStart(items)
       })

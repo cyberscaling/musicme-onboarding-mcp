@@ -42,7 +42,7 @@ describe('CastStore', () => {
     await store.init('APPID', 3600)
     fw.connect()
     await store.sendLoad({
-      items: [{ id: 'a', ref: { cb: 1, disc: 1, track: 1 }, meta: { title: 'A' } }],
+      items: [{ id: 'a', ref: { cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, meta: { title: 'A' } }],
       startId: 'a',
       positionSec: 42,
     })
@@ -114,7 +114,7 @@ describe('CastStore', () => {
     await store.init('APPID', 3600)
     fw.connect()
     await store.sendLoad({
-      items: [{ id: 'a', ref: { cb: 1, disc: 1, track: 1 }, meta: { title: 'A' } }],
+      items: [{ id: 'a', ref: { cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, meta: { title: 'A' } }],
       startId: 'a',
       autoplay: false,
     })
@@ -127,8 +127,8 @@ describe('CastStore', () => {
     fw.connect()
     await store.sendReconcile(
       [
-        { id: 'a', ref: { cb: 1, disc: 1, track: 1 }, meta: { title: 'A' } },
-        { id: 'b', ref: { cb: 1, disc: 1, track: 2 }, meta: { title: 'B' } },
+        { id: 'a', ref: { cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, meta: { title: 'A' } },
+        { id: 'b', ref: { cb: 1, disc: 1, track: 2, context: 'on_demand' as const }, meta: { title: 'B' } },
       ],
       'b',
     )

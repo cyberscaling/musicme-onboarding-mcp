@@ -15,7 +15,7 @@
     "gen-keys": "bun run tools/gen-keys.ts"
   },
   "dependencies": {
-    "@cyberscaling/secure-audio-stream-client": "0.6.0",
+    "@cyberscaling/secure-audio-stream-client": "0.7.0",
     "hono": "^4.12.18"
   },
   "devDependencies": {

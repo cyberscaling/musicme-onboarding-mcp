@@ -19,7 +19,7 @@ describe('cast protocol', () => {
     const m = parseSenderMessage({
       type: 'LOAD',
       token: 'tok',
-      items: [{ id: 'a', ref: { cb: 1, disc: 1, track: 1 }, meta: { title: 'T' } }],
+      items: [{ id: 'a', ref: { cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, meta: { title: 'T' } }],
     })
     expect(m?.type).toBe('LOAD')
   })
@@ -28,7 +28,7 @@ describe('cast protocol', () => {
     const m = parseSenderMessage({
       type: 'LOAD',
       token: 'tok',
-      items: [{ id: 'a', ref: { cb: 1, disc: 1, track: 1 }, meta: { title: 'T' } }],
+      items: [{ id: 'a', ref: { cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, meta: { title: 'T' } }],
       startId: 'a',
       positionSec: 5,
       autoplay: false,

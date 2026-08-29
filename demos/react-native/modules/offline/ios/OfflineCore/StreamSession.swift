@@ -94,7 +94,12 @@ public final class StreamSession: Sendable {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let token = try await tokenProvider()
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let body: [String: Any] = ["cb": trackRef.cb, "disc": trackRef.disc, "track": trackRef.track]
+        // `context` declares the listening mode for royalty declaratifs and is
+        // required by the integration contract (offline downloads are on-demand).
+        let body: [String: Any] = [
+            "cb": trackRef.cb, "disc": trackRef.disc, "track": trackRef.track,
+            "context": "on_demand",
+        ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, resp) = try await urlSession.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0

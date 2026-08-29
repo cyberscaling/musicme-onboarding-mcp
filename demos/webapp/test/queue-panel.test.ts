@@ -41,8 +41,8 @@ describe('queue-panel', () => {
   })
 
   it('renders one row per item with cover + title + remove', () => {
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A', coverCb: '1' })
-    playlistStore.enqueue({ cb: 2, disc: 1, track: 1 }, { title: 'B', coverCb: '2' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'A', coverCb: '1' })
+    playlistStore.enqueue({ cb: 2, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'B', coverCb: '2' })
     const rows = document.querySelectorAll('#queue-panel .qrow')
     expect(rows.length).toBe(2)
     expect(rows[0]!.querySelector('.t')!.textContent).toContain('A')
@@ -52,15 +52,15 @@ describe('queue-panel', () => {
   })
 
   it('click on remove (✕) calls playlistStore.remove(id)', () => {
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'A' })
     const removeBtn = document.querySelector<HTMLElement>('.qrow [data-action="remove"]')!
     removeBtn.click()
     expect(playlistStore.items).toHaveLength(0)
   })
 
   it('click on row body calls playlistStore.playQueueAt(id)', () => {
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
-    playlistStore.enqueue({ cb: 2, disc: 1, track: 1 }, { title: 'B' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'A' })
+    playlistStore.enqueue({ cb: 2, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'B' })
     const spy = vi.spyOn(playlistStore, 'playQueueAt')
     const row = document.querySelectorAll<HTMLElement>('.qrow')[1]!
     row.querySelector<HTMLElement>('.t')!.click()
@@ -68,9 +68,9 @@ describe('queue-panel', () => {
   })
 
   it('drop on another row triggers playlistStore.move(draggedId, targetIdx)', () => {
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
-    playlistStore.enqueue({ cb: 2, disc: 1, track: 1 }, { title: 'B' })
-    playlistStore.enqueue({ cb: 3, disc: 1, track: 1 }, { title: 'C' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'A' })
+    playlistStore.enqueue({ cb: 2, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'B' })
+    playlistStore.enqueue({ cb: 3, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'C' })
     const rows = document.querySelectorAll<HTMLElement>('.qrow')
     const draggedId = rows[2]!.dataset.id!
 

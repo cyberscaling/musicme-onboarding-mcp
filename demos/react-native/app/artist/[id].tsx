@@ -83,10 +83,10 @@ export default function ArtistPage() {
                 track={t}
                 index={i}
                 onPlay={() => {
-                  void player.playSingle({ cb: Number(t.cb), disc: t.disc, track: t.track, title: t.title, artist: t.artist ?? data.artist.name })
+                  void player.playSingle({ cb: Number(t.cb), disc: t.disc, track: t.track, context: 'on_demand', title: t.title, artist: t.artist ?? data.artist.name })
                 }}
                 onEnqueue={() => player.enqueue({
-                  ref: { cb: Number(t.cb), disc: t.disc, track: t.track },
+                  ref: { cb: Number(t.cb), disc: t.disc, track: t.track, context: 'on_demand' as const },
                   meta: { title: t.title, artist: t.artist ?? data.artist.name },
                 })}
               />

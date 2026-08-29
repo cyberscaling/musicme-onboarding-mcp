@@ -65,7 +65,7 @@ describe('playlistStore — init + accessors', () => {
 describe('playlistStore — enqueue / remove / move', () => {
   it('enqueue adds an item with meta and persists to localStorage', () => {
     playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A', coverCb: '1' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'A', coverCb: '1' })
     expect(playlistStore.items).toHaveLength(1)
     expect(playlistStore.items[0]!.meta).toMatchObject({ title: 'A' })
     const stored = JSON.parse(localStorage.getItem(LS_KEY)!) as { items: unknown[] }
@@ -74,8 +74,8 @@ describe('playlistStore — enqueue / remove / move', () => {
 
   it('remove deletes by id', () => {
     playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
-    playlistStore.enqueue({ cb: 2, disc: 1, track: 1 }, { title: 'B' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'A' })
+    playlistStore.enqueue({ cb: 2, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'B' })
     const id = playlistStore.items[0]!.id
     playlistStore.remove(id)
     expect(playlistStore.items).toHaveLength(1)
@@ -88,11 +88,11 @@ describe('playlistStore — change subscription', () => {
     playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
     const handler = vi.fn()
     const off = playlistStore.onChange(handler)
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'A' })
     expect(handler).toHaveBeenCalled()
     off()
     handler.mockClear()
-    playlistStore.enqueue({ cb: 2, disc: 1, track: 1 }, { title: 'B' })
+    playlistStore.enqueue({ cb: 2, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'B' })
     expect(handler).not.toHaveBeenCalled()
   })
 })
@@ -103,7 +103,7 @@ describe('playlistStore — persist / restore', () => {
     localStorage.setItem(
       LS_KEY,
       JSON.stringify({
-        items: [{ id: 'fixed-id', ref: { cb: 1, disc: 1, track: 1 }, meta }],
+        items: [{ id: 'fixed-id', ref: { cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, meta }],
         currentIndex: -1,
       }),
     )
@@ -116,7 +116,7 @@ describe('playlistStore — persist / restore', () => {
 
   it('clear empties the playlist and removes LS entry', () => {
     playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory)
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'A' })
     playlistStore.clear()
     expect(playlistStore.items).toEqual([])
     expect(localStorage.getItem(LS_KEY)).toBeNull()
@@ -147,7 +147,7 @@ describe('playlistStore — preview mode', () => {
     ) as NonNullable<PlaylistOptions['playerFactory']>
     const previewFactory = vi.fn(previewPlayerFactory)
     playlistStore.init(makeAudio(), 'https://x', async () => 't', normalFactory, previewFactory)
-    playlistStore.playTrack({ cb: 1, disc: 1, track: 1 }, { title: 'Current' })
+    playlistStore.playTrack({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'Current' })
     await vi.waitFor(() => expect(normalFactory).toHaveBeenCalledTimes(1))
 
     expect(playlistStore.setPreviewEnabled(true)).toBe(true)
@@ -165,10 +165,10 @@ describe('playlistStore — preview mode', () => {
     playlistStore.init(makeAudio(), 'https://x', async () => 't', normalFactory, previewFactory)
     playlistStore.setPreviewEnabled(true)
 
-    playlistStore.playTrack({ cb: 2, disc: 1, track: 4 }, { title: 'Preview' })
+    playlistStore.playTrack({ cb: 2, disc: 1, track: 4, context: 'on_demand' as const }, { title: 'Preview' })
 
     await vi.waitFor(() => expect(previewFactory).toHaveBeenCalledTimes(1))
-    expect(previewFactory.mock.calls[0]?.[1]).toEqual({ cb: 2, disc: 1, track: 4 })
+    expect(previewFactory.mock.calls[0]?.[1]).toEqual({ cb: 2, disc: 1, track: 4, context: 'on_demand' as const })
     previewFactory.mock.calls[0]?.[2](90)
     expect(playlistStore.activePreviewSeconds).toBe(90)
     expect(normalFactory).not.toHaveBeenCalled()
@@ -178,7 +178,7 @@ describe('playlistStore — preview mode', () => {
     const previewFactory = vi.fn(previewPlayerFactory)
     playlistStore.init(makeAudio(), 'https://x', async () => 't', playerFactory, previewFactory)
     playlistStore.setPreviewEnabled(true)
-    playlistStore.playTrack({ cb: 3, disc: 1, track: 1 }, { title: 'Preview' })
+    playlistStore.playTrack({ cb: 3, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'Preview' })
     await vi.waitFor(() => expect(previewFactory).toHaveBeenCalledTimes(1))
     previewFactory.mock.calls[0]?.[2](60)
 

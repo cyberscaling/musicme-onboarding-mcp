@@ -43,7 +43,7 @@ export default function DownloadsScreen() {
               onPress={() => {
                 if (!ref) return
                 void player.playSingle({
-                  cb: ref.cb, disc: ref.disc, track: ref.track,
+                  cb: ref.cb, disc: ref.disc, track: ref.track, context: 'on_demand',
                   ...(item.meta.title ? { title: item.meta.title } : {}),
                   ...(item.meta.artist ? { artist: item.meta.artist } : {}),
                 })

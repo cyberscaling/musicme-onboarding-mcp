@@ -68,7 +68,7 @@ describe('mini-bar cast integration', () => {
   it('hands off the local queue on connect (LOAD sent, local paused)', async () => {
     const audio = document.getElementById('player') as HTMLAudioElement
     playlistStore.init(audio, 'https://stream.example', async () => 'tok', playerFactory)
-    playlistStore.playTrack({ cb: 1, disc: 1, track: 1 }, { title: 'A' })
+    playlistStore.playTrack({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'A' })
     mount()
     fw.connect()
     await vi.waitFor(() => {

@@ -5,7 +5,10 @@
  */
 export const CAST_NAMESPACE = 'urn:x-cast:com.cyberscaling.sas'
 
-export type CastTrackRef = { cb: number; disc: number; track: number }
+import type { TrackRef } from '@cyberscaling/secure-audio-stream-client'
+
+/** Wire shape = the SDK's TrackRef — aliased so protocol and SDK cannot drift. */
+export type CastTrackRef = TrackRef
 
 export type CastTrackMeta = {
   title: string

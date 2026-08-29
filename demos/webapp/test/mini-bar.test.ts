@@ -45,7 +45,7 @@ describe('mini-bar', () => {
     const audio = document.getElementById('player') as HTMLAudioElement
     playlistStore.init(audio, 'https://x', async () => 't', playerFactory)
     mountMiniBar(document.getElementById('player-bar') as HTMLElement)
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'Hello', coverCb: '1' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'Hello', coverCb: '1' })
     expect(document.getElementById('player-bar')!.classList.contains('visible')).toBe(true)
     expect(document.querySelector('.mini-bar .meta .t')!.textContent).toBe('Hello')
   })
@@ -54,7 +54,7 @@ describe('mini-bar', () => {
     const audio = document.getElementById('player') as HTMLAudioElement
     playlistStore.init(audio, 'https://x', async () => 't', playerFactory)
     mountMiniBar(document.getElementById('player-bar') as HTMLElement)
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'Hello' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'Hello' })
     const spy = vi.spyOn(playlistStore, 'toggle')
     document.querySelector<HTMLButtonElement>('.mini-bar button[data-action="toggle"]')!.click()
     expect(spy).toHaveBeenCalled()
@@ -64,7 +64,7 @@ describe('mini-bar', () => {
     const audio = document.getElementById('player') as HTMLAudioElement
     playlistStore.init(audio, 'https://x', async () => 't', playerFactory)
     mountMiniBar(document.getElementById('player-bar') as HTMLElement)
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 1 }, { title: 'Hello' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'Hello' })
     const panel = document.getElementById('queue-panel') as HTMLElement
     expect(panel.hidden).toBe(true)
     document.querySelector<HTMLButtonElement>('.mini-bar button[data-action="queue"]')!.click()
@@ -78,7 +78,7 @@ describe('mini-bar', () => {
       makeMockPlayer(opts.audioElement as HTMLAudioElement),
     )
     playlistStore.init(audio, 'https://x', async () => 't', playerFactory, previewFactory)
-    playlistStore.playTrack({ cb: 1, disc: 1, track: 1 }, { title: 'Full' })
+    playlistStore.playTrack({ cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'Full' })
     await vi.waitFor(() => expect(playlistStore.currentTrack?.title).toBe('Full'))
     mountMiniBar(document.getElementById('player-bar') as HTMLElement)
     const badge = document.querySelector<HTMLElement>('.preview-badge')!
@@ -86,7 +86,7 @@ describe('mini-bar', () => {
     playlistStore.setPreviewEnabled(true)
     expect(badge.hidden).toBe(true)
 
-    playlistStore.playTrack({ cb: 2, disc: 1, track: 1 }, { title: 'Preview' })
+    playlistStore.playTrack({ cb: 2, disc: 1, track: 1, context: 'on_demand' as const }, { title: 'Preview' })
     await vi.waitFor(() => expect(previewFactory).toHaveBeenCalledTimes(1))
     previewFactory.mock.calls[0]?.[2](60)
 

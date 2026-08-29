@@ -9,8 +9,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PreviewAudioPlayer } from '../public/preview-player'
 
-const TARGET_REF: TrackRef = { cb: 12, disc: 1, track: 3 }
-const DIRECT_REF: TrackRef = { cb: 34, disc: 2, track: 5 }
+const TARGET_REF: TrackRef = { cb: 12, disc: 1, track: 3, context: 'on_demand' as const }
+const DIRECT_REF: TrackRef = { cb: 34, disc: 2, track: 5, context: 'on_demand' as const }
 const FULL_BUNDLE = {} as PrefetchedSession
 
 const baseOptions: SecureAudioPlayerOptions = {

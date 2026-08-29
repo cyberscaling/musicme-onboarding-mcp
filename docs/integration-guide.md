@@ -520,8 +520,13 @@ document.querySelector('#player-container')!.append(player.audio)
 
 // Joue un morceau identifié par (cb, disc, track).
 // (Ces trois nombres viennent de ton catalogue / de ton API métier.)
-await player.load({ cb: 5400863209100, disc: 1, track: 1 })
+// `context` est OBLIGATOIRE : il déclare le mode d'écoute pour les
+// déclaratifs de royalties. Valeurs : 'on_demand' | 'radio' | 'artist_mix'.
+await player.load({ cb: 5400863209100, disc: 1, track: 1, context: 'on_demand' })
 await player.play()
+
+// Une lecture pilotée par une radio ou un mix artiste se déclare comme telle :
+await player.load({ cb: 5400863209100, disc: 1, track: 2, context: 'radio' })
 ```
 
 C'est tout. Le SDK :
@@ -602,8 +607,9 @@ const playlist = new Playlist({
   getToken: async () => (await fetch('/api/player-token', { credentials: 'include' })).json().then(j => j.token),
   audioElement: document.getElementById('player') as HTMLAudioElement,
   items: [
-    { cb: 5400863209100, disc: 1, track: 1 },
-    { cb: 3663729427441, disc: 1, track: 7 },
+    // File pilotée (radio / mix artiste) : chaque item déclare son mode.
+    { cb: 5400863209100, disc: 1, track: 1, context: 'radio' },
+    { cb: 3663729427441, disc: 1, track: 7, context: 'radio' },
   ],
   onCurrentChange: (curr, prev) => updateNowPlayingUi(curr),
 })
@@ -619,7 +625,7 @@ Le pré-fetch est en deux couches :
 **Mutations live** — sans interruption audio :
 
 ```typescript
-playlist.insert({ cb: …, disc: 1, track: 5 }, /* position */ 1)
+playlist.insert({ cb: …, disc: 1, track: 5, context: 'radio' }, /* position */ 1)
 playlist.move(itemId, /* newPosition */ 0)
 playlist.remove(itemId)
 playlist.setItems([…])         // reset complet
@@ -664,7 +670,11 @@ POST https://secure-stream.musicme.com/init-stream
 Authorization: Bearer <JWT>
 Content-Type: application/json
 
-{ "cb": 5400863209100, "disc": 1, "track": 1 }
+# `context` est OBLIGATOIRE : mode d'écoute pour les déclaratifs de royalties.
+# Valeurs : "on_demand" | "radio" | "artist_mix". Autre valeur → 400 invalid_context.
+# (Absent ou null = compté à la demande — tolérance réservée aux apps déployées
+# avant l'introduction du champ, ne pas s'en servir dans une nouvelle intégration.)
+{ "cb": 5400863209100, "disc": 1, "track": 1, "context": "on_demand" }
 
 → 200
 {
@@ -863,7 +873,7 @@ import { NativePlayer } from '@demos/offline'
 import type { PlayMetricsReport } from '@demos/offline'
 
 <NativePlayer
-  trackRef={{ cb: 5400863209100, disc: 1, track: 3 }}
+  trackRef={{ cb: 5400863209100, disc: 1, track: 3, context: 'on_demand' }}
   playing={isPlaying}
   seekToMs={seekPosition}         // null = pas de seek en cours
   title="Fête foraine"
@@ -1204,7 +1214,7 @@ export default function PlayerPage() {
   async function playTrack(cb: number, disc: number, track: number) {
     const p = playerRef.current
     if (!p) return
-    await p.load({ cb, disc, track })
+    await p.load({ cb, disc, track, context: 'on_demand' })
     await p.play()
   }
 

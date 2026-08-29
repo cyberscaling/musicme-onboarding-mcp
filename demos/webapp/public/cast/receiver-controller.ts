@@ -5,7 +5,14 @@
  * PlaylistOptions.playerFactory injection point.
  */
 import { Playlist, type PlaylistOptions } from '@cyberscaling/secure-audio-stream-client'
-import type { CastTrackMeta, ReceiverMessage, ReceiverState, SenderMessage } from './protocol'
+import type { CastTrackMeta, CastTrackRef, ReceiverMessage, ReceiverState, SenderMessage } from './protocol'
+
+/** Cast wire tolerance: a queue sent by a pre-0.7 sender bundle carries refs
+ *  without `context` (the type is compile-time only across the cast boundary).
+ *  Default it explicitly here rather than letting `undefined` silently ride. */
+function withContext(ref: CastTrackRef): CastTrackRef {
+  return { ...ref, context: ref.context ?? 'on_demand' }
+}
 
 const STATUS_THROTTLE_MS = 1000
 
@@ -78,7 +85,7 @@ export class ReceiverController {
         if (sameTrack) {
           // Queue edited around the still-playing track — reconcile, no restart.
           this.playlist.reconcile(
-            msg.items.map((it) => ({ id: it.id, ref: it.ref, meta: it.meta })),
+            msg.items.map((it) => ({ id: it.id, ref: withContext(it.ref), meta: it.meta })),
             msg.startId as string,
           )
           this.sendStatus(true)
@@ -91,7 +98,7 @@ export class ReceiverController {
         this.loading = true
         // setItems before the loading status so the frame reflects the new
         // queue (index reset to -1), not the previously playing track.
-        this.playlist.setItems(msg.items.map((it) => ({ id: it.id, ref: it.ref, meta: it.meta })))
+        this.playlist.setItems(msg.items.map((it) => ({ id: it.id, ref: withContext(it.ref), meta: it.meta })))
         this.sendStatus(true)
         try {
           await this.playlist.play(msg.startId)

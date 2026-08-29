@@ -61,7 +61,7 @@ export function renderTrackRow(track: Track, ctx: TrackRowContext): HTMLElement 
   }
   row.querySelector<HTMLElement>('.t')!.addEventListener('click', () => {
     playlistStore.playTrack(
-      { cb: Number(track.cb), disc: track.disc, track: track.track },
+      { cb: Number(track.cb), disc: track.disc, track: track.track, context: 'on_demand' },
       trackToMeta(track, ctx.defaults),
     )
   })
@@ -70,7 +70,7 @@ export function renderTrackRow(track: Track, ctx: TrackRowContext): HTMLElement 
     const btn = e.currentTarget as HTMLElement
     flyToQueue(btn)
     playlistStore.enqueue(
-      { cb: Number(track.cb), disc: track.disc, track: track.track },
+      { cb: Number(track.cb), disc: track.disc, track: track.track, context: 'on_demand' },
       trackToMeta(track, ctx.defaults),
     )
   })

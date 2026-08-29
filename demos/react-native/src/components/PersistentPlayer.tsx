@@ -64,7 +64,7 @@ export function PersistentPlayer() {
       {track ? (
         <View pointerEvents="none" style={styles.hidden}>
           <NativePlayer
-            trackRef={{ cb: track.cb, disc: track.disc, track: track.track }}
+            trackRef={{ cb: track.cb, disc: track.disc, track: track.track, context: 'on_demand' as const }}
             title={track.title}
             artist={track.artist}
             coverUrl={buildCoverUrl(track.cb, 295)}

@@ -57,7 +57,7 @@ public final class PlaybackEngine: NSObject, PlaybackEngineProtocol, @unchecked 
                 currentLoader = nil
                 currentSession = nil
             } else {
-                // init-stream expects { cb: Int, disc: Int, track: Int }
+                // init-stream expects { cb: Int, disc: Int, track: Int, context: String }
                 let token = try await api.jwt.mint()
                 let session = try await initStream(track: track, jwt: token)
                 let loader = SecureStreamLoader(
@@ -126,7 +126,8 @@ public final class PlaybackEngine: NSObject, PlaybackEngineProtocol, @unchecked 
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try JSONEncoder().encode(InitStreamRequest(cb: cb, disc: track.disc, track: track.track))
+        req.httpBody = try JSONEncoder().encode(
+            InitStreamRequest(cb: cb, disc: track.disc, track: track.track, context: "on_demand"))
         let (data, resp): (Data, URLResponse)
         do { (data, resp) = try await urlSession.data(for: req) }
         catch { throw PlaybackError.streamFetch(message: error.localizedDescription) }

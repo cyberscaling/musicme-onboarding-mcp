@@ -55,7 +55,7 @@ afterEach(() => {
   playlistStore.reset()
 })
 
-const REF = { cb: 1, disc: 1, track: 1 }
+const REF = { cb: 1, disc: 1, track: 1, context: 'on_demand' as const }
 
 describe('playlist-store cast routing', () => {
   it('playTrack while connected sends LOAD (autoplay) and does not drive the local player', async () => {
@@ -83,7 +83,7 @@ describe('playlist-store cast routing', () => {
       meta: { title: 'A' },
     })
     fw.sent.length = 0
-    playlistStore.enqueue({ cb: 1, disc: 1, track: 2 }, { title: 'B' })
+    playlistStore.enqueue({ cb: 1, disc: 1, track: 2, context: 'on_demand' as const }, { title: 'B' })
     await vi.waitFor(() => expect(fw.sent.some((m) => m.type === 'LOAD')).toBe(true))
     const m = fw.sent.filter((x) => x.type === 'LOAD').at(-1) as {
       startId?: string

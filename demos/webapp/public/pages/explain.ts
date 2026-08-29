@@ -418,7 +418,7 @@ export function explainPage(root: HTMLElement, me: Me): void {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${mintedToken}`,
         },
-        body: JSON.stringify({ cb, disc, track }),
+        body: JSON.stringify({ cb, disc, track, context: 'on_demand' }),
       })
       const text = await r.text()
       let parsed: unknown
@@ -460,7 +460,7 @@ export function explainPage(root: HTMLElement, me: Me): void {
       const r = await fetch(`${cfg.streamWorkerUrl}/init-stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tampered}` },
-        body: JSON.stringify({ cb: 5400863209100, disc: 1, track: 1 }),
+        body: JSON.stringify({ cb: 5400863209100, disc: 1, track: 1, context: 'on_demand' }),
       })
       const text = await r.text()
       s5.payload.textContent = `HTTP ${r.status}\n\n${text}`

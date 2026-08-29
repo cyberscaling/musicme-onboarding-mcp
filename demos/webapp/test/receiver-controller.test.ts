@@ -61,8 +61,8 @@ function makeController() {
 }
 
 const ITEMS = [
-  { id: 'a', ref: { cb: 1, disc: 1, track: 1 }, meta: { title: 'A' } },
-  { id: 'b', ref: { cb: 1, disc: 1, track: 2 }, meta: { title: 'B' } },
+  { id: 'a', ref: { cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, meta: { title: 'A' } },
+  { id: 'b', ref: { cb: 1, disc: 1, track: 2, context: 'on_demand' as const }, meta: { title: 'B' } },
 ]
 
 describe('ReceiverController', () => {
@@ -70,7 +70,7 @@ describe('ReceiverController', () => {
     const { ctrl, sent } = makeController()
     await ctrl.handleMessage({ type: 'LOAD', token: 't1', items: ITEMS, startId: 'b' })
     expect(players.length).toBe(1)
-    expect(players[0]?.load).toHaveBeenCalledWith({ cb: 1, disc: 1, track: 2 })
+    expect(players[0]?.load).toHaveBeenCalledWith({ cb: 1, disc: 1, track: 2, context: 'on_demand' as const })
     const statuses = sent.filter((m) => m.type === 'STATUS')
     expect(statuses.at(-1)).toMatchObject({ itemId: 'b', index: 1, meta: { title: 'B' } })
   })
@@ -121,8 +121,8 @@ describe('ReceiverController', () => {
       type: 'LOAD',
       token: 't',
       items: [
-        { id: 'a', ref: { cb: 1, disc: 1, track: 1 }, meta: { title: 'A' } },
-        { id: 'c', ref: { cb: 1, disc: 1, track: 3 }, meta: { title: 'C' } },
+        { id: 'a', ref: { cb: 1, disc: 1, track: 1, context: 'on_demand' as const }, meta: { title: 'A' } },
+        { id: 'c', ref: { cb: 1, disc: 1, track: 3, context: 'on_demand' as const }, meta: { title: 'C' } },
       ],
       startId: 'a',
     })
@@ -166,6 +166,6 @@ describe('ReceiverController', () => {
     const n = players.length
     await ctrl.handleMessage({ type: 'LOAD', token: 't', items: ITEMS, startId: 'b' })
     expect(players.length).toBe(n + 1)
-    expect(players.at(-1)?.load).toHaveBeenCalledWith({ cb: 1, disc: 1, track: 2 })
+    expect(players.at(-1)?.load).toHaveBeenCalledWith({ cb: 1, disc: 1, track: 2, context: 'on_demand' as const })
   })
 })

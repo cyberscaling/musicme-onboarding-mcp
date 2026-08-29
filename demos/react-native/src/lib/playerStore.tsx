@@ -167,7 +167,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playSingle = useCallback(async (track: TrackInfo) => {
     const single = [{
       id: `single-${track.cb}-${track.disc}-${track.track}`,
-      ref: { cb: track.cb, disc: track.disc, track: track.track },
+      // Respecte le mode déclaré par l'appelant (radio / mix), pas de valeur forcée.
+      ref: { cb: track.cb, disc: track.disc, track: track.track, context: track.context },
       meta: track.title ? { title: track.title } : {},
     }]
     resetForNewTrack(track)

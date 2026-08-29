@@ -284,8 +284,11 @@ public struct InitStreamRequest: Codable, Sendable {
     public let cb: Int
     public let disc: Int
     public let track: Int
-    public init(cb: Int, disc: Int, track: Int) {
-        self.cb = cb; self.disc = disc; self.track = track
+    /// Listening mode for royalty declaratifs: "on_demand" | "radio" | "artist_mix".
+    /// Required by the integration contract — declare it explicitly per play.
+    public let context: String
+    public init(cb: Int, disc: Int, track: Int, context: String) {
+        self.cb = cb; self.disc = disc; self.track = track; self.context = context
     }
 }
 

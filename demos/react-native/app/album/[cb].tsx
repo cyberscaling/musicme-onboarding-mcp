@@ -63,7 +63,7 @@ export default function AlbumPage() {
   const tracks = data.tracks
   const albumArtist = a.artist ?? ''
   const refs = tracks.map((t) => ({
-    ref: { cb: Number(t.cb || cb), disc: t.disc, track: t.track },
+    ref: { cb: Number(t.cb || cb), disc: t.disc, track: t.track, context: 'on_demand' as const },
     meta: { title: t.title, ...(t.artist || albumArtist ? { artist: t.artist ?? albumArtist } : {}) },
   }))
 
@@ -100,7 +100,7 @@ export default function AlbumPage() {
             showCover={false}
             onPlay={() => { void player.playAlbumEphemeral(refs, index) }}
             onEnqueue={() => player.enqueue({
-              ref: { cb: Number(item.cb || cb), disc: item.disc, track: item.track },
+              ref: { cb: Number(item.cb || cb), disc: item.disc, track: item.track, context: 'on_demand' as const },
               meta: { title: item.title, ...(item.artist || albumArtist ? { artist: item.artist ?? albumArtist } : {}) },
             })}
           />
